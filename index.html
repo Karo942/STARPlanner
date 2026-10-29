@@ -4,14 +4,14 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="theme-color" content="#f7f6f2" />
-  <meta name="description" content="STARPlanner · 一个像聊天一样陪你完成计划的温柔伙伴，每天不定时给你鼓励与催促。" />
+  <meta name="description" content="STARPlanner · 一个像聊天一样陪你完成计划的温柔伙伴：每天不定时鼓励与催促，陪伴番茄钟，自定义纪念日。" />
   <title>STARPlanner · 陪你完成计划</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌟</text></svg>" />
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
   <div class="app" id="app">
-    <!-- 左侧边栏：伙伴卡片 + 计划列表 -->
+    <!-- 左侧边栏：纪念日 + 伙伴卡片 + 计划列表 -->
     <aside class="sidebar" id="sidebar">
       <div class="sidebar-top">
         <div class="brand">
@@ -20,6 +20,19 @@
         </div>
         <button class="icon-btn sidebar-close" id="sidebarClose" aria-label="收起侧栏" title="收起侧栏">✕</button>
       </div>
+
+      <!-- 纪念日（置顶显示） -->
+      <section class="anniv-section">
+        <div class="section-head">
+          <h2 class="section-title">📌 纪念日</h2>
+          <button class="icon-btn" id="addAnnivBtn" aria-label="添加纪念日" title="添加纪念日">＋</button>
+        </div>
+        <div class="anniv-list" id="annivList"></div>
+        <div class="anniv-empty" id="annivEmpty">
+          <span class="empty-icon">🎈</span>
+          <p>把重要的日子放在这里，永远置顶</p>
+        </div>
+      </section>
 
       <!-- 伙伴卡片 -->
       <section class="companion-card" id="companionCard">
@@ -64,6 +77,7 @@
           </div>
         </div>
         <div class="chat-header-actions">
+          <button class="icon-btn" id="pomoBtn" aria-label="陪伴番茄钟" title="陪伴番茄钟">🍅</button>
           <button class="icon-btn" id="notifyBtn" aria-label="开启桌面通知" title="桌面通知">🔔</button>
           <button class="icon-btn" id="themeBtn" aria-label="切换深浅色" title="切换深浅色">🌙</button>
         </div>
@@ -88,7 +102,7 @@
     </main>
   </div>
 
-  <!-- 新建计划弹窗 -->
+  <!-- 新建/编辑计划弹窗 -->
   <div class="overlay" id="planOverlay" hidden>
     <div class="modal">
       <div class="modal-head">
@@ -115,6 +129,67 @@
         <button class="btn ghost" data-close="planOverlay">取消</button>
         <button class="btn primary" id="planSave">保存</button>
       </div>
+    </div>
+  </div>
+
+  <!-- 纪念日弹窗 -->
+  <div class="overlay" id="annivOverlay" hidden>
+    <div class="modal">
+      <div class="modal-head">
+        <h3 id="annivModalTitle">添加纪念日</h3>
+        <button class="icon-btn" data-close="annivOverlay" aria-label="关闭">✕</button>
+      </div>
+      <label class="field">
+        <span>名称</span>
+        <input type="text" id="annivTitle" placeholder="例如：恋爱纪念日、TA 的生日" maxlength="24" />
+      </label>
+      <label class="field">
+        <span>日期（每年这一天都会提醒）</span>
+        <input type="date" id="annivDate" />
+      </label>
+      <div class="field">
+        <span>图标</span>
+        <div class="emoji-grid anniv-emoji-grid" id="annivEmojiGrid"></div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn ghost danger" id="annivDelete" hidden>删除</button>
+        <span class="spacer"></span>
+        <button class="btn ghost" data-close="annivOverlay">取消</button>
+        <button class="btn primary" id="annivSave">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 番茄钟弹窗 -->
+  <div class="overlay" id="pomodoroOverlay" hidden>
+    <div class="modal pomodoro-modal">
+      <div class="modal-head">
+        <h3>🍅 陪伴番茄钟</h3>
+        <button class="icon-btn" data-close="pomodoroOverlay" aria-label="关闭">✕</button>
+      </div>
+      <div class="pomo-ring-wrap">
+        <svg class="pomo-ring" viewBox="0 0 200 200" aria-hidden="true">
+          <circle class="pomo-track" cx="100" cy="100" r="88" />
+          <circle class="pomo-progress" id="pomoProgress" cx="100" cy="100" r="88" />
+        </svg>
+        <div class="pomo-center">
+          <div class="pomo-phase" id="pomoPhase">专注中 🍅</div>
+          <div class="pomo-time" id="pomoTime">25:00</div>
+        </div>
+      </div>
+      <div class="pomo-stats" id="pomoStats">今日 0 个 · 累计 0 个</div>
+      <div class="pomo-controls">
+        <button class="btn ghost" id="pomoReset">重置</button>
+        <button class="btn primary pomo-main" id="pomoToggle">开始</button>
+        <button class="btn ghost" id="pomoSkip">跳过</button>
+      </div>
+      <div class="pomo-settings">
+        <label class="pomo-field">专注 <input type="number" id="pomoFocus" min="1" max="120" /> 分</label>
+        <label class="pomo-field">短休 <input type="number" id="pomoShort" min="1" max="60" /> 分</label>
+        <label class="pomo-field">长休 <input type="number" id="pomoLong" min="1" max="60" /> 分</label>
+        <label class="pomo-field">长休间隔 <input type="number" id="pomoEvery" min="1" max="12" /> 个</label>
+      </div>
+      <p class="hint">专注结束会自动进入休息；休息结束后，点「开始」开启下一轮。</p>
     </div>
   </div>
 

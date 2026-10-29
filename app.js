@@ -1,6 +1,10 @@
 /* =========================================================
    STARPlanner · 应用逻辑
-   一个像聊天一样陪你完成计划的伙伴
+   一个像聊天一样陪你完成计划的伙伴：
+   · 每日不定时鼓励与催促
+   · 自定义伙伴头像/昵称
+   · 陪伴番茄钟
+   · 自定义纪念日（置顶显示）
    ========================================================= */
 (function () {
   "use strict";
@@ -10,9 +14,11 @@
     "🐻", "🐱", "🐰", "🦊", "🐼", "🐨", "🐶", "🐹",
     "🦄", "🐯", "🐧", "🦉", "🌟", "🌙", "🍀", "🌸", "🔥", "🎀"
   ];
+  var ANNIV_EMOJIS = ["🎂", "🎉", "💍", "❤️", "🏠", "🎓", "🐣", "🌟", "🌹", "🎊", "🎈", "💝"];
 
   var FREQ_COUNTS = { low: 3, medium: 5, high: 8 };
   var PLAN_LEAD_HOURS = 3; // 截止前提前提醒的小时数
+  var POMO_RING_C = 552.92; // 2 * PI * 88
 
   /* ---------------- 消息文案池 ---------------- */
   var POOL = {
@@ -76,6 +82,19 @@
       "我们可以把大目标拆成小步骤，一步一步来。",
       "好的计划配上行动，就没有做不到的事！"
     ],
+    pomoStart: [
+      "开始专注啦，我陪你 {min} 分钟，别分心哦 🍅",
+      "专注时间到，我们 {min} 分钟后见，加油！🍅"
+    ],
+    pomoFocusDone: [
+      "太棒了，一个番茄完成啦！起来活动一下，休息 {min} 分钟吧 🍅",
+      "专注结束！你做得很好，放松 {min} 分钟再继续 🍅"
+    ],
+    pomoBreakDone: [
+      "休息好了吗？准备开始下一个专注吧 💪",
+      "能量补满啦，再来一轮专注！",
+      "休息是为了走更远，我们继续吧 🍅"
+    ],
     fallback: [
       "嗯嗯，我在听～",
       "好呀，我会记住的。",
@@ -97,6 +116,10 @@
       settings: { frequency: "medium", activeStart: "08:00", activeEnd: "23:00", theme: "light" },
       schedule: { date: "", items: [] },
       planReminders: {}, // planId -> 'YYYY-MM-DD'
+      anniversaries: [], // { id, title, month, day, startYear, emoji }
+      annivGreeted: {}, // annivId -> 'YYYY-MM-DD'
+      pomodoro: { focus: 25, short: 5, long: 15, longEvery: 4, today: "", todayCount: 0, total: 0 },
+      pomoTimer: { phase: "focus", running: false, endAt: null, remaining: 1500, started: false, cycleCount: 0 },
       seen: false
     };
   }
@@ -176,6 +199,10 @@
     if (dateStr(d) === dateStr(tomorrow)) return "明天 " + time;
     return (d.getMonth() + 1) + "月" + d.getDate() + "日 " + time;
   }
+  function fmtPomo(sec) {
+    sec = Math.max(0, Math.round(sec));
+    return pad(Math.floor(sec / 60)) + ":" + pad(sec % 60);
+  }
   function fill(text, map) {
     return text.replace(/\{(\w+)\}/g, function (_, k) { return map[k] != null ? map[k] : ""; });
   }
@@ -189,8 +216,12 @@
   var messageInput = $("messageInput");
   var quickRepliesEl = $("quickReplies");
   var toastEl = $("toast");
+  var annivListEl = $("annivList");
+  var annivEmptyEl = $("annivEmpty");
 
   var editingPlanId = null;
+  var editingAnnivId = null;
+  var annivEmojiSel = "🎂";
 
   /* ---------------- 主题 ---------------- */
   function applyTheme() {
@@ -255,12 +286,9 @@
     scrollBottom(false);
   }
 
-  function scrollBottom(smooth) {
+  function scrollBottom() {
     requestAnimationFrame(function () {
       messagesEl.scrollTop = messagesEl.scrollHeight;
-      if (smooth !== false) {
-        // 使用 CSS 平滑滚动
-      }
     });
   }
 
@@ -668,6 +696,360 @@
       save();
     }
     checkPlanReminders(now);
+    checkAnniversaries(now);
+  }
+
+  /* ---------------- 纪念日 ---------------- */
+  function daysUntilMonthDay(month, day, now) {
+    var start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    var target = new Date(now.getFullYear(), month - 1, day);
+    if (target < start) target = new Date(now.getFullYear() + 1, month - 1, day);
+    return Math.round((target - start) / 86400000);
+  }
+
+  function annivInfo(a) {
+    var now = new Date();
+    var isToday = (a.month === now.getMonth() + 1) && (a.day === now.getDate());
+    var days = daysUntilMonthDay(a.month, a.day, now);
+    var years = a.startYear ? (now.getFullYear() - a.startYear) : null;
+    var label;
+    if (isToday) {
+      label = (years && years > 0) ? "第 " + years + " 年 · 就是今天 🎉" : "就是今天 🎉";
+    } else if (days === 1) {
+      label = "就是明天";
+    } else {
+      label = "还有 " + days + " 天";
+    }
+    return { isToday: isToday, days: days, years: years, label: label };
+  }
+
+  function renderAnniversaries() {
+    annivListEl.innerHTML = "";
+    var has = state.anniversaries.length > 0;
+    annivEmptyEl.hidden = has;
+    var items = state.anniversaries.slice().map(function (a) {
+      return { a: a, info: annivInfo(a) };
+    }).sort(function (x, y) {
+      if (x.info.days !== y.info.days) return x.info.days - y.info.days;
+      return (x.a.title || "").localeCompare(y.a.title || "");
+    });
+    items.forEach(function (x) {
+      annivListEl.appendChild(buildAnnivItem(x.a, x.info));
+    });
+  }
+
+  function buildAnnivItem(a, info) {
+    var item = el("div", "anniv-item" + (info.isToday ? " today" : ""));
+    var emoji = el("span", "anniv-emoji", a.emoji || "🎂");
+    var body = el("div", "anniv-body");
+    var title = el("div", "anniv-title", a.title);
+    var count = el("div", "anniv-count", info.label);
+    body.appendChild(title);
+    body.appendChild(count);
+    item.appendChild(emoji);
+    item.appendChild(body);
+    item.addEventListener("click", function () { openAnnivModal(a); });
+    return item;
+  }
+
+  function openAnnivModal(a) {
+    editingAnnivId = a ? a.id : null;
+    $("annivModalTitle").textContent = a ? "编辑纪念日" : "添加纪念日";
+    $("annivTitle").value = a ? a.title : "";
+    $("annivDate").value = a ? annivDateValue(a.month, a.day, a.startYear) : "";
+    annivEmojiSel = a ? (a.emoji || "🎂") : "🎂";
+    $("annivDelete").hidden = !a;
+    renderAnnivEmojiGrid();
+    $("annivOverlay").hidden = false;
+    setTimeout(function () { $("annivTitle").focus(); }, 60);
+  }
+
+  function annivDateValue(month, day, startYear) {
+    var y = startYear || new Date().getFullYear();
+    return y + "-" + pad(month) + "-" + pad(day);
+  }
+
+  function renderAnnivEmojiGrid() {
+    var grid = $("annivEmojiGrid");
+    grid.innerHTML = "";
+    ANNIV_EMOJIS.forEach(function (e) {
+      var b = el("button", "emoji-opt" + (e === annivEmojiSel ? " active" : ""), e);
+      b.type = "button";
+      b.addEventListener("click", function () {
+        annivEmojiSel = e;
+        renderAnnivEmojiGrid();
+      });
+      grid.appendChild(b);
+    });
+  }
+
+  function saveAnniv() {
+    var title = $("annivTitle").value.trim();
+    if (!title) { toast("请填写纪念日名称"); return; }
+    var val = $("annivDate").value;
+    if (!val) { toast("请选择日期"); return; }
+    var parts = val.split("-");
+    var month = parseInt(parts[1], 10);
+    var day = parseInt(parts[2], 10);
+    var year = parseInt(parts[0], 10);
+    if (editingAnnivId) {
+      var a = state.anniversaries.find(function (x) { return x.id === editingAnnivId; });
+      if (a) {
+        a.title = title; a.month = month; a.day = day; a.startYear = year; a.emoji = annivEmojiSel;
+      }
+    } else {
+      state.anniversaries.push({
+        id: uid(), title: title, month: month, day: day, startYear: year, emoji: annivEmojiSel
+      });
+    }
+    renderAnniversaries();
+    save();
+    $("annivOverlay").hidden = true;
+    toast("纪念日已保存 ✅");
+  }
+
+  function deleteAnniv() {
+    if (!editingAnnivId) return;
+    state.anniversaries = state.anniversaries.filter(function (x) { return x.id !== editingAnnivId; });
+    delete state.annivGreeted[editingAnnivId];
+    renderAnniversaries();
+    save();
+    $("annivOverlay").hidden = true;
+    toast("纪念日已删除");
+  }
+
+  function checkAnniversaries(now) {
+    var today = dateStr(now);
+    state.anniversaries.forEach(function (a) {
+      if (state.annivGreeted[a.id] === today) return;
+      if (a.month === now.getMonth() + 1 && a.day === now.getDate()) {
+        state.annivGreeted[a.id] = today;
+        var years = a.startYear ? (now.getFullYear() - a.startYear) : null;
+        var text = "今天是「" + a.title + "」" +
+          (years && years > 0 ? "第 " + years + " 周年" : "纪念日") +
+          "，记得给自己一份仪式感 🎉";
+        addMessage("companion", text, "remind");
+        bumpUnread();
+        pushNotification(state.companion.name + " 提醒你", text);
+        renderAnniversaries();
+      }
+    });
+  }
+
+  /* ---------------- 陪伴番茄钟 ---------------- */
+  function pomoDuration() {
+    var p = state.pomodoro;
+    if (state.pomoTimer.phase === "focus") return p.focus * 60;
+    if (state.pomoTimer.phase === "long") return p.long * 60;
+    return p.short * 60;
+  }
+
+  function remainingSec() {
+    var pt = state.pomoTimer;
+    if (!pt.running) return Math.max(0, Math.round(pt.remaining || 0));
+    return Math.max(0, Math.round((pt.endAt - Date.now()) / 1000));
+  }
+
+  function renderPomo() {
+    var pt = state.pomoTimer;
+    var total = pomoDuration();
+    var rem = remainingSec();
+    var frac = total > 0 ? (rem / total) : 0;
+    $("pomoProgress").style.strokeDashoffset = String(POMO_RING_C * (1 - frac));
+    $("pomoTime").textContent = fmtPomo(rem);
+    var label = pt.phase === "focus" ? "专注中 🍅" : pt.phase === "short" ? "短休息 ☕" : "长休息 🌿";
+    $("pomoPhase").textContent = label;
+    var color = pt.phase === "focus" ? "var(--accent)" : pt.phase === "short" ? "var(--green)" : "var(--amber)";
+    $("pomoProgress").style.stroke = color;
+    $("pomoToggle").textContent = pt.running ? "暂停" : (pt.started ? "继续" : "开始");
+    $("pomoStats").textContent = "今日 " + state.pomodoro.todayCount + " 个 · 累计 " + state.pomodoro.total + " 个";
+  }
+
+  function updatePomoHeader() {
+    var btn = $("pomoBtn");
+    var pt = state.pomoTimer;
+    if (pt.running) {
+      btn.classList.add("pomo-active");
+      btn.title = "番茄钟进行中 · " + fmtPomo(remainingSec());
+    } else {
+      btn.classList.remove("pomo-active");
+      btn.title = "陪伴番茄钟";
+    }
+  }
+
+  var audioCtx = null;
+  function ensureAudio() {
+    if (!audioCtx) {
+      try {
+        var AC = window.AudioContext || window.webkitAudioContext;
+        if (AC) audioCtx = new AC();
+      } catch (e) { /* 忽略 */ }
+    }
+    if (audioCtx && audioCtx.state === "suspended") {
+      try { audioCtx.resume(); } catch (e) { /* 忽略 */ }
+    }
+  }
+  function chime() {
+    try {
+      if (!audioCtx) return;
+      var now = audioCtx.currentTime;
+      [523.25, 659.25, 783.99].forEach(function (f, i) {
+        var o = audioCtx.createOscillator();
+        var g = audioCtx.createGain();
+        o.type = "sine";
+        o.frequency.value = f;
+        var t = now + i * 0.13;
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.exponentialRampToValueAtTime(0.2, t + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + 0.38);
+        o.connect(g);
+        g.connect(audioCtx.destination);
+        o.start(t);
+        o.stop(t + 0.4);
+      });
+    } catch (e) { /* 忽略 */ }
+  }
+
+  function togglePomo() {
+    ensureAudio();
+    var pt = state.pomoTimer;
+    if (pt.running) {
+      pt.remaining = remainingSec();
+      pt.running = false;
+      pt.endAt = null;
+    } else {
+      if (!pt.started) {
+        pt.remaining = pomoDuration();
+        pt.started = true;
+        if (pt.phase === "focus") {
+          var min = state.pomodoro.focus;
+          addMessage("companion", fill(pick(POOL.pomoStart), { min: min, name: state.companion.name }), "system");
+          bumpUnread();
+        }
+      }
+      pt.running = true;
+      pt.endAt = Date.now() + pt.remaining * 1000;
+    }
+    save();
+    renderPomo();
+    updatePomoHeader();
+  }
+
+  function resetPomo() {
+    var pt = state.pomoTimer;
+    pt.running = false;
+    pt.endAt = null;
+    pt.phase = "focus";
+    pt.remaining = state.pomodoro.focus * 60;
+    pt.started = false;
+    pt.cycleCount = 0;
+    save();
+    renderPomo();
+    updatePomoHeader();
+  }
+
+  function skipPomo() {
+    var pt = state.pomoTimer;
+    var p = state.pomodoro;
+    if (pt.phase === "focus") {
+      if (pt.cycleCount >= p.longEvery) { pt.phase = "long"; pt.cycleCount = 0; }
+      else { pt.phase = "short"; }
+    } else {
+      pt.phase = "focus";
+    }
+    pt.remaining = pomoDuration();
+    pt.started = false;
+    pt.running = false;
+    pt.endAt = null;
+    save();
+    renderPomo();
+    updatePomoHeader();
+  }
+
+  function completePomoPhase() {
+    var pt = state.pomoTimer;
+    var p = state.pomodoro;
+    var wasFocus = pt.phase === "focus";
+    if (wasFocus) {
+      p.total++;
+      if (p.today !== dateStr(new Date())) { p.today = dateStr(new Date()); p.todayCount = 0; }
+      p.todayCount++;
+      pt.cycleCount++;
+      var rest = (pt.cycleCount >= p.longEvery) ? p.long : p.short;
+      var text = fill(pick(POOL.pomoFocusDone), { min: rest, name: state.companion.name });
+      addMessage("companion", text, "encourage");
+      bumpUnread();
+      pushNotification(state.companion.name + " · 番茄完成", text);
+      chime();
+
+      if (pt.cycleCount >= p.longEvery) { pt.phase = "long"; pt.cycleCount = 0; }
+      else { pt.phase = "short"; }
+      pt.remaining = pomoDuration();
+      pt.started = false;
+      pt.running = true; // 自动进入休息
+      pt.endAt = Date.now() + pt.remaining * 1000;
+      addMessage("companion", "休息 " + rest + " 分钟吧，起来活动一下 ☕", "system");
+      bumpUnread();
+    } else {
+      pt.phase = "focus";
+      pt.remaining = p.focus * 60;
+      pt.started = false;
+      pt.running = false;
+      pt.endAt = null;
+      var t2 = fill(pick(POOL.pomoBreakDone), { name: state.companion.name });
+      addMessage("companion", t2, "encourage");
+      bumpUnread();
+      pushNotification(state.companion.name + " · 休息结束", "准备开始下一个专注吧");
+      chime();
+    }
+    save();
+    renderPomo();
+    updatePomoHeader();
+  }
+
+  function tickPomo() {
+    var pt = state.pomoTimer;
+    var p = state.pomodoro;
+    var today = dateStr(new Date());
+    if (p.today !== today) { p.today = today; p.todayCount = 0; }
+    if (pt.running && pt.endAt && Date.now() >= pt.endAt) {
+      completePomoPhase();
+    }
+    renderPomo();
+    updatePomoHeader();
+  }
+
+  function openPomodoro() {
+    $("pomoFocus").value = state.pomodoro.focus;
+    $("pomoShort").value = state.pomodoro.short;
+    $("pomoLong").value = state.pomodoro.long;
+    $("pomoEvery").value = state.pomodoro.longEvery;
+    renderPomo();
+    $("pomodoroOverlay").hidden = false;
+  }
+
+  function bindPomoSettings() {
+    var cfg = [
+      ["pomoFocus", "focus", 1, 120],
+      ["pomoShort", "short", 1, 60],
+      ["pomoLong", "long", 1, 60],
+      ["pomoEvery", "longEvery", 1, 12]
+    ];
+    cfg.forEach(function (c) {
+      $(c[0]).addEventListener("change", function () {
+        var v = parseInt(this.value, 10);
+        if (isNaN(v)) { this.value = state.pomodoro[c[1]]; return; }
+        v = Math.max(c[2], Math.min(c[3], v));
+        this.value = v;
+        state.pomodoro[c[1]] = v;
+        if (c[1] !== "longEvery") {
+          var pt = state.pomoTimer;
+          if (!pt.running && !pt.started) pt.remaining = pomoDuration();
+        }
+        save();
+        renderPomo();
+      });
+    });
   }
 
   /* ---------------- 伙伴回复 ---------------- */
@@ -799,6 +1181,18 @@
       save();
     });
 
+    // 纪念日
+    $("addAnnivBtn").addEventListener("click", function () { openAnnivModal(null); });
+    $("annivSave").addEventListener("click", saveAnniv);
+    $("annivDelete").addEventListener("click", deleteAnniv);
+
+    // 番茄钟
+    $("pomoBtn").addEventListener("click", function () { ensureAudio(); openPomodoro(); });
+    $("pomoToggle").addEventListener("click", togglePomo);
+    $("pomoReset").addEventListener("click", resetPomo);
+    $("pomoSkip").addEventListener("click", skipPomo);
+    bindPomoSettings();
+
     $("sidebarOpen").addEventListener("click", function () { toggleSidebar(true); });
     $("sidebarClose").addEventListener("click", function () { toggleSidebar(false); });
 
@@ -824,19 +1218,28 @@
 
   /* ---------------- 初始化 ---------------- */
   function init() {
+    bindEvents();
     applyTheme();
     updateCompanionUI();
     updateNotifyBtn();
     renderQuickReplies();
     renderPlans();
+    renderAnniversaries();
     renderAllMessages();
+
+    // 番茄钟剩余时间归一化（防止时长设置变化后不一致）
+    if (!state.pomoTimer.started && !state.pomoTimer.running) {
+      state.pomoTimer.remaining = pomoDuration();
+    }
+    renderPomo();
+    updatePomoHeader();
 
     if (!state.seen) {
       state.seen = true;
       var c = state.companion.name;
       addMessage("companion", "你好呀，我是" + c + " 👋 以后我就是你的计划搭子啦。", "encourage");
       addMessage("companion", "每天我都会在不定的时候来找你，给你加油打气，也会盯着你的计划、提醒你别偷懒～", "encourage");
-      addMessage("companion", "先点左侧的 ＋ 添加一个计划，我们就开始吧！", "system");
+      addMessage("companion", "左侧可以添加计划、置顶纪念日，右上角的 🍅 是陪伴番茄钟，我们一起加油吧！", "system");
       save();
     }
 
@@ -849,6 +1252,9 @@
 
     setInterval(tick, 25000);
     tick(); // 立即执行一次，处理跨天与补发
+
+    setInterval(tickPomo, 500);
+    tickPomo();
   }
 
   init();

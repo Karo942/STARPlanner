@@ -1050,3 +1050,254 @@ input {
     gap: 6px;
   }
 }
+
+/* =========================================================
+   新增：纪念日（置顶） + 番茄钟
+   ========================================================= */
+
+/* 纪念日 */
+.anniv-section {
+  flex: 0 0 auto;
+}
+
+.anniv-list {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  max-height: 150px;
+  overflow-y: auto;
+  padding: 2px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+.anniv-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 11px;
+  border-radius: var(--radius-sm);
+  background: var(--card);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  transition: transform 0.12s ease, box-shadow 0.12s ease, background 0.35s ease;
+  animation: pop-in 0.25s ease;
+}
+
+.anniv-item:hover {
+  box-shadow: var(--shadow-sm);
+}
+
+.anniv-item.today {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.anniv-emoji {
+  font-size: 22px;
+  flex: 0 0 auto;
+  line-height: 1;
+}
+
+.anniv-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.anniv-title {
+  font-size: 13.5px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.anniv-count {
+  font-size: 11.5px;
+  color: var(--text-2);
+  margin-top: 2px;
+}
+
+.anniv-item.today .anniv-count {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.anniv-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-3);
+  font-size: 12px;
+  padding: 12px 8px;
+  text-align: center;
+}
+
+.anniv-empty[hidden] {
+  display: none;
+}
+
+.anniv-empty .empty-icon {
+  font-size: 24px;
+}
+
+.spacer {
+  flex: 1;
+}
+
+.field input[type="date"],
+.field input[type="number"] {
+  width: 100%;
+  height: 44px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0 14px;
+  font-size: 14px;
+  color: var(--text);
+  background: var(--card-soft);
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.field input[type="date"]:focus,
+.field input[type="number"]:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+/* 番茄钟 */
+#pomoBtn.pomo-active {
+  color: var(--red);
+  background: var(--red-soft);
+  animation: pomo-pulse 2s infinite;
+}
+
+@keyframes pomo-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(224, 101, 92, 0.45);
+  }
+  50% {
+    box-shadow: 0 0 0 7px rgba(224, 101, 92, 0);
+  }
+}
+
+.pomodoro-modal {
+  max-width: 400px;
+}
+
+.pomo-ring-wrap {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  margin: 4px 0 10px;
+}
+
+.pomo-ring {
+  width: 210px;
+  height: 210px;
+  transform: rotate(-90deg);
+}
+
+.pomo-track {
+  fill: none;
+  stroke: var(--border);
+  stroke-width: 12;
+}
+
+.pomo-progress {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 12;
+  stroke-linecap: round;
+  stroke-dasharray: 552.92;
+  stroke-dashoffset: 0;
+  transition: stroke-dashoffset 0.5s linear, stroke 0.3s ease;
+}
+
+.pomo-center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+.pomo-phase {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+
+.pomo-time {
+  font-size: 44px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 1px;
+}
+
+.pomo-stats {
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-2);
+  margin-bottom: 14px;
+}
+
+.pomo-controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.pomo-main {
+  min-width: 96px;
+}
+
+.pomo-settings {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.pomo-field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-2);
+}
+
+.pomo-field input {
+  width: 54px;
+  height: 34px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0 6px;
+  font-size: 13px;
+  color: var(--text);
+  background: var(--card-soft);
+  outline: none;
+}
+
+.pomo-field input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+@media (max-width: 520px) {
+  .pomo-settings {
+    grid-template-columns: 1fr 1fr;
+  }
+  .pomo-ring {
+    width: 180px;
+    height: 180px;
+  }
+  .pomo-time {
+    font-size: 38px;
+  }
+}
