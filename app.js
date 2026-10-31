@@ -485,8 +485,9 @@
   }
   function deleteMessage(msg) {
     state.messages = state.messages.filter(function (m) { return m.id !== msg.id; });
-    if (msg._el && msg._el.parentNode) msg._el.parentNode.removeChild(msg._el);
     save();
+    renderAllMessages();
+    revealLatest();
   }
   function renderFavorites() {
     var list = $("favList");
@@ -511,7 +512,9 @@
     state.messages.forEach(function (m) {
       var day = dateStr(new Date(m.time));
       if (day !== lastDay) { messagesEl.appendChild(el("div", "card-date", cardDateLabel(m.time))); lastDay = day; }
-      messagesEl.appendChild(renderMessage(m));
+      var node = renderMessage(m);
+      m._el = node;
+      messagesEl.appendChild(node);
     });
   }
 
@@ -1834,8 +1837,28 @@
   }
 
   /* ---------------- 初始化 ---------------- */
+  function runSplash() {
+    var splash = $("splash");
+    var fill = $("splashFill");
+    if (!splash || !fill) return;
+    var p = 0;
+    var timer = setInterval(function () {
+      p += Math.random() * 16 + 7;
+      if (p >= 100) {
+        p = 100;
+        clearInterval(timer);
+        setTimeout(function () {
+          splash.classList.add("done");
+          setTimeout(function () { if (splash.parentNode) splash.parentNode.removeChild(splash); }, 420);
+        }, 260);
+      }
+      fill.style.width = Math.min(100, p) + "%";
+    }, 110);
+  }
+
   function init() {
     bindEvents();
+    runSplash();
     applyTheme();
     applyBackground();
     applyRadius();
@@ -2352,7 +2375,7 @@
     attr.dataset.i = i;
     var color = el("input", "ta-ev-color"); color.type = "color"; color.value = e.color || "#cdd8c4"; color.dataset.i = i;
     var del = el("button", "ta-ev-del", "🗑"); del.type = "button"; del.dataset.i = i;
-    del.addEventListener("click", function () { state.ta.cfg.events.splice(i, 1); renderTASettings(); });
+    del.addEventListener("click", function () { state.ta.cfg.events.splice(i, 1); save(); renderTASettings(); });
     metaRow.appendChild(attr);
     metaRow.appendChild(color);
     metaRow.appendChild(del);

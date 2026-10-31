@@ -2208,6 +2208,48 @@ input[type="range"] {
   flex: 0 0 auto;
 }
 
+/* 开屏加载 */
+.splash {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  background: var(--paper);
+  transition: opacity 0.4s ease;
+}
+
+.splash.done {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.splash-brand {
+  font-family: var(--font-head);
+  font-weight: 200;
+  font-size: 22px;
+  letter-spacing: 0.18em;
+  color: var(--ink);
+}
+
+.splash-bar {
+  width: 200px;
+  height: 4px;
+  background: var(--hairline);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.splash-fill {
+  height: 100%;
+  width: 0;
+  background: var(--sage);
+  transition: width 0.2s ease;
+}
+
 /* ---------------- TA 的时刻（固定窗口列） ---------------- */
 .app {
   grid-template-columns: 320px 1fr 0;
