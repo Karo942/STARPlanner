@@ -16,7 +16,7 @@
   ];
   var ANNIV_EMOJIS = ["🎂", "🎉", "💍", "❤️", "🏠", "🎓", "🐣", "🌟", "🌹", "🎊", "🎈", "💝"];
 
-  var FREQ_COUNTS = { low: 3, medium: 5, high: 8 };
+  var FREQ_COUNTS = { low: 2, medium: 4, high: 6 };
   var PLAN_LEAD_HOURS = 3;
   var POMO_RING_C = 552.92;
 
@@ -349,6 +349,8 @@
   var weekOffset = 0;
   var lastReplySig = "";
   var activeLibTab = "reply";
+  var activeSubTab = "默认";
+  var libSelected = [];
   var userEmojiSel = "😊";
   var taView = "day";
   var taWeekOffset = 0;
@@ -797,7 +799,6 @@
     if (e) state.settings.activeEnd = e;
     if (toMin(state.settings.activeStart) >= toMin(state.settings.activeEnd)) { toast("活跃时段开始需早于结束"); return; }
     updateCompanionUI();
-    generateDailySchedule(dateStr(new Date()));
     renderFootTip();
     save();
     $("settingsOverlay").hidden = true;
@@ -857,6 +858,8 @@
   /* ---------------- 字卡库 ---------------- */
   function openCards() {
     activeLibTab = "reply";
+    activeSubTab = "默认";
+    libSelected = [];
     renderLibTabs();
     renderLibBody();
     $("cardsOverlay").hidden = false;
@@ -867,14 +870,130 @@
     LIB_TABS.forEach(function (t) {
       var b = el("button", "lib-tab" + (t.key === activeLibTab ? " active" : ""), t.label);
       b.type = "button";
-      b.addEventListener("click", function () { activeLibTab = t.key; renderLibTabs(); renderLibBody(); });
+      b.addEventListener("click", function () { activeLibTab = t.key; activeSubTab = "默认"; libSelected = []; renderLibTabs(); renderLibBody(); });
       tabs.appendChild(b);
     });
+  }
+  function libSubGroups(cat) {
+    if (cat === "reply") {
+      var gs = ["默认"];
+      (state.cardLib.replyGroups || []).forEach(function (g) { gs.push(g.name); });
+      return gs;
+    }
+    return ["默认", "自定义"];
+  }
+  function libIsEditable(cat, sub) { return sub !== "默认"; }
+  function libSubCards(cat, sub) {
+    if (cat === "reply") {
+      if (sub === "默认") return DEFAULT_CARDS.reply.slice();
+      var g = (state.cardLib.replyGroups || []).find(function (x) { return x.name === sub; });
+      return g ? g.cards.slice() : [];
+    }
+    if (sub === "默认") return DEFAULT_CARDS[cat].slice();
+    return (state.cardLib[cat] || []).slice();
+  }
+  function libDeleteCard(cat, sub, idx) {
+    if (cat === "reply") {
+      var g = state.cardLib.replyGroups.find(function (x) { return x.name === sub; });
+      if (g) g.cards.splice(idx, 1);
+    } else {
+      state.cardLib[cat].splice(idx, 1);
+    }
+    save();
   }
   function renderLibBody() {
     var box = $("libBody");
     box.innerHTML = "";
-    box.appendChild(activeLibTab === "reply" ? buildReplyEditor() : buildFlatEditor(activeLibTab));
+    var cat = activeLibTab;
+    var subs = libSubGroups(cat);
+    if (subs.indexOf(activeSubTab) < 0) activeSubTab = "默认";
+    var sub = activeSubTab;
+    var editable = libIsEditable(cat, sub);
+    var cards = libSubCards(cat, sub);
+    var subtabs = el("div", "lib-subtabs");
+    subs.forEach(function (s) {
+      var b = el("button", "lib-tab sub" + (s === sub ? " active" : ""), s + (s === "默认" ? "（内置）" : ""));
+      b.type = "button";
+      b.addEventListener("click", function () { activeSubTab = s; libSelected = []; renderLibBody(); });
+      subtabs.appendChild(b);
+    });
+    box.appendChild(subtabs);
+    var head = el("div", "lib-group-head");
+    head.appendChild(el("span", "lib-group-name", (sub === "默认" ? "默认（内置）" : sub) + " · " + cards.length + " 张"));
+    if (cat === "reply" && editable) {
+      var gdel = el("button", "lib-group-del", "删除分组");
+      gdel.type = "button";
+      gdel.addEventListener("click", function () {
+        var i = state.cardLib.replyGroups.findIndex(function (x) { return x.name === sub; });
+        if (i >= 0) state.cardLib.replyGroups.splice(i, 1);
+        save();
+        activeSubTab = "默认";
+        renderLibBody();
+      });
+      head.appendChild(gdel);
+    }
+    box.appendChild(head);
+    if (editable && cards.length) {
+      var bar = el("div", "lib-batch-bar");
+      var all = el("input", "lib-selectall");
+      all.type = "checkbox";
+      all.checked = libSelected.length === cards.length;
+      all.addEventListener("change", function () {
+        libSelected = all.checked ? cards.map(function (_, i) { return i; }) : [];
+        renderLibBody();
+      });
+      bar.appendChild(all);
+      bar.appendChild(el("span", "lib-batch-label", "全选（" + libSelected.length + "/" + cards.length + "）"));
+      var delBtn = el("button", "btn ghost danger", "批量删除");
+      delBtn.type = "button";
+      delBtn.addEventListener("click", function () {
+        if (!libSelected.length) { toast("请先勾选要删除的字卡"); return; }
+        var n = libSelected.length;
+        libSelected.slice().sort(function (a, b) { return b - a; }).forEach(function (i) { libDeleteCard(cat, sub, i); });
+        libSelected = [];
+        renderLibBody();
+        toast("已删除 " + n + " 张字卡");
+      });
+      bar.appendChild(delBtn);
+      box.appendChild(bar);
+    }
+    var list = el("div", "lib-cards");
+    cards.forEach(function (c, i) {
+      var item = el("div", "lib-card" + (editable ? "" : " locked"));
+      if (editable) {
+        var cb = el("input", "lib-check");
+        cb.type = "checkbox";
+        cb.checked = libSelected.indexOf(i) >= 0;
+        cb.addEventListener("change", function () {
+          var k = libSelected.indexOf(i);
+          if (cb.checked && k < 0) libSelected.push(i);
+          else if (!cb.checked && k >= 0) libSelected.splice(k, 1);
+        });
+        item.appendChild(cb);
+      }
+      item.appendChild(el("span", "lib-card-text", c));
+      if (editable) {
+        var d = el("button", "lib-card-del", "🗑");
+        d.type = "button";
+        d.title = "删除";
+        d.addEventListener("click", function () { libDeleteCard(cat, sub, i); renderLibBody(); });
+        item.appendChild(d);
+      }
+      list.appendChild(item);
+    });
+    box.appendChild(list);
+    if (!cards.length) box.appendChild(el("div", "empty", sub === "默认" ? "内置字卡为空" : "该分组下暂无字卡"));
+    if (cat === "reply") {
+      box.appendChild(libBatchArea(
+        "【组名】\n一行一张字卡\n\n例如：\n【晚安】\n晚安，做个好梦\n早点休息哦",
+        "「【】」内写组名，下面每一行是一张字卡，自动归入该组；没有组名的行归入「未分组」。",
+        batchAddReply
+      ));
+    } else if (editable) {
+      box.appendChild(libBatchArea("一行一张字卡，批量加入", "每一行是一张字卡，自动切分加入。", function (v) { batchAddFlat(cat, v); }));
+    } else {
+      box.appendChild(libBatchArea("一行一张字卡，批量加入", "当前为内置字卡（不可删除）。请切到「自定义」分组后添加自己的字卡。", function (v) { activeSubTab = "自定义"; batchAddFlat(cat, v); }));
+    }
   }
   function libBatchArea(placeholder, hintText, onAdd) {
     var wrap = el("div", "lib-editor");
@@ -887,72 +1006,6 @@
     btn.addEventListener("click", function () { onAdd(ta.value || ""); });
     wrap.appendChild(btn);
     return wrap;
-  }
-  function buildReplyEditor() {
-    var wrap = el("div", "lib-editor");
-    wrap.appendChild(libBatchArea(
-      "【组名】\n一行一张字卡\n\n例如：\n【晚安】\n晚安，做个好梦\n早点休息哦",
-      "「【】」内写组名，下面每一行是一张字卡，自动归入该组；没有组名的行归入「未分组」。",
-      batchAddReply
-    ));
-    var groups = el("div", "lib-groups");
-    groups.appendChild(buildGroupBlock("默认（内置）", DEFAULT_CARDS.reply, null, null, true));
-    (state.cardLib.replyGroups || []).forEach(function (g, gi) {
-      groups.appendChild(buildGroupBlock(g.name, g.cards, gi, null, false));
-    });
-    wrap.appendChild(groups);
-    return wrap;
-  }
-  function buildGroupBlock(name, cards, gi, ci, locked) {
-    var block = el("div", "lib-group");
-    var head = el("div", "lib-group-head");
-    head.appendChild(el("span", "lib-group-name", name + "（" + cards.length + "）"));
-    if (!locked) {
-      var del = el("button", "lib-group-del", "删除分组");
-      del.type = "button";
-      del.addEventListener("click", function () { state.cardLib.replyGroups.splice(gi, 1); save(); renderLibBody(); });
-      head.appendChild(del);
-    }
-    block.appendChild(head);
-    var list = el("div", "lib-cards");
-    cards.forEach(function (c, i) {
-      list.appendChild(buildLibCard(c, locked, null, null, gi, i));
-    });
-    block.appendChild(list);
-    return block;
-  }
-  function buildFlatEditor(cat) {
-    var wrap = el("div", "lib-editor");
-    wrap.appendChild(libBatchArea("一行一张字卡，批量加入", "每一行是一张字卡，自动切分加入。", function (v) { batchAddFlat(cat, v); }));
-    var defHead = el("div", "lib-group-head");
-    defHead.appendChild(el("span", "lib-group-name", "默认（内置）· " + DEFAULT_CARDS[cat].length + " 张"));
-    wrap.appendChild(defHead);
-    var defList = el("div", "lib-cards");
-    DEFAULT_CARDS[cat].forEach(function (c) { defList.appendChild(buildLibCard(c, true, null, null)); });
-    wrap.appendChild(defList);
-    var userHead = el("div", "lib-group-head");
-    userHead.appendChild(el("span", "lib-group-name", "自定义 · " + (state.cardLib[cat] || []).length + " 张"));
-    wrap.appendChild(userHead);
-    var userList = el("div", "lib-cards");
-    (state.cardLib[cat] || []).forEach(function (c, i) { userList.appendChild(buildLibCard(c, false, cat, i)); });
-    wrap.appendChild(userList);
-    return wrap;
-  }
-  function buildLibCard(text, locked, cat, ci, gi, i) {
-    var item = el("div", "lib-card" + (locked ? " locked" : ""));
-    item.appendChild(el("span", "lib-card-text", text));
-    if (!locked) {
-      var d = el("button", "lib-card-del", "🗑");
-      d.type = "button";
-      d.addEventListener("click", function () {
-        if (gi != null) { state.cardLib.replyGroups[gi].cards.splice(i, 1); }
-        else { state.cardLib[cat].splice(ci, 1); }
-        save();
-        renderLibBody();
-      });
-      item.appendChild(d);
-    }
-    return item;
   }
   function findOrCreateGroup(name) {
     var groups = state.cardLib.replyGroups;
@@ -986,6 +1039,7 @@
     });
     if (!added) { toast("未识别到字卡内容"); return; }
     save();
+    activeSubTab = "自定义";
     renderLibBody();
     toast("已加入 " + added + " 张字卡 ✅");
   }
@@ -1027,7 +1081,7 @@
       var t = startMin + Math.floor(Math.random() * span);
       var clash = items.some(function (it) { return Math.abs(it.timeMin - t) < 30; });
       if (clash) continue;
-      items.push({ timeMin: t, kind: pick(["encourage", "encourage", "comfort", "urge"]), sent: false });
+      items.push({ timeMin: t, kind: pick(["encourage", "urge", "urge", "comfort", "urge", "encourage"]), sent: false });
     }
     items.sort(function (a, b) { return a.timeMin - b.timeMin; });
     state.schedule = { date: dayStr, items: items };
