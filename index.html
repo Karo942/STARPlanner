@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#f5f0e8" />
+  <meta name="description" content="STARPlanner · 字卡传讯式的计划伙伴：随机拼接回复、主动发消息、陪伴番茄钟、自定义纪念日、周日历、字卡库。" />
+  <title>STARPlanner · 字卡传讯</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌟</text></svg>" />
+  <link rel="stylesheet" href="style.css" />
+  <style id="customCssStyle"></style>
+  <style id="chatCssStyle"></style>
+</head>
+<body>
+  <div class="bg-layer" id="bgLayer"></div>
+  <div class="app" id="app">
+
+    <!-- 侧栏 -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-top">
+        <div class="brand">
+          <span class="brand-mark">🌟</span>
+          <span class="brand-name">STARPlanner</span>
+        </div>
+        <div class="sidebar-actions">
+          <button class="icon-btn" id="notifyBtn" aria-label="桌面通知" title="桌面通知">🔔</button>
+          <button class="icon-btn" id="themeBtn" aria-label="切换主题" title="切换主题">☾</button>
+          <button class="icon-btn sidebar-close" id="sidebarClose" aria-label="收起侧栏" title="收起侧栏">✕</button>
+        </div>
+      </div>
+
+      <!-- 伙伴卡片 -->
+      <div class="companion-card">
+        <div class="companion-avatar" id="companionAvatar" title="点击设置伙伴">
+          <span class="avatar-inner" id="companionAvatarInner">🐻</span>
+          <span class="avatar-status"></span>
+        </div>
+        <div class="companion-meta">
+          <div class="companion-name" id="companionName">星野</div>
+          <div class="companion-slogan" id="companionSlogan">你的私人计划搭子</div>
+        </div>
+        <button class="icon-btn" id="openSettings" aria-label="设置伙伴" title="设置伙伴">⚙</button>
+      </div>
+
+      <!-- 功能入口 -->
+      <div class="feature-grid">
+        <button class="feature-btn" id="openWeek">🗓️ 周日历</button>
+        <button class="feature-btn" id="openPomo">🍅 番茄钟</button>
+        <button class="feature-btn" id="openCards">🎴 字卡库</button>
+        <button class="feature-btn" id="openReplySettings">⚙️ 回复设置</button>
+      </div>
+
+      <!-- 纪念日（置顶） -->
+      <section class="panel">
+        <div class="section-head">
+          <h2 class="section-title">📌 纪念日</h2>
+          <button class="icon-btn" id="addAnnivBtn" aria-label="添加纪念日" title="添加纪念日">＋</button>
+        </div>
+        <div class="anniv-list" id="annivList"></div>
+        <p class="empty" id="annivEmpty">把重要的日子放在这里，永远置顶。</p>
+      </section>
+
+      <!-- 计划 -->
+      <section class="panel grow">
+        <div class="section-head">
+          <h2 class="section-title">🗒️ 计划</h2>
+          <button class="icon-btn" id="addPlanBtn" aria-label="新建计划" title="新建计划">＋</button>
+        </div>
+        <div class="plan-list" id="planList"></div>
+        <p class="empty" id="plansEmpty">还没有计划，点击 ＋ 添加一个吧。</p>
+      </section>
+
+      <div class="sidebar-foot">
+        <span class="foot-tip" id="footTip">今日提醒将在随机时刻送达</span>
+      </div>
+    </aside>
+
+    <!-- 聊天区 -->
+    <main class="chat">
+      <header class="chat-header">
+        <button class="icon-btn only-mobile" id="sidebarOpen" aria-label="打开侧栏" title="侧栏">☰</button>
+        <div class="chat-header-id">
+          <div class="chat-header-avatar" id="headerAvatar">🐻</div>
+          <div>
+            <div class="chat-header-name" id="headerName">星野</div>
+            <div class="chat-header-status">在线 · 会不定时来陪你</div>
+          </div>
+        </div>
+        <button class="icon-btn" id="momentsToggle" aria-label="TA 的时刻" title="TA 的时刻">🕐</button>
+      </header>
+
+      <div class="messages" id="messages" aria-live="polite"></div>
+
+      <div class="composer">
+        <div class="quick-replies" id="quickReplies"></div>
+        <form class="composer-row" id="composerForm">
+          <input type="text" id="messageInput" class="composer-input" placeholder="" maxlength="500" autocomplete="off" />
+          <button type="button" class="btn ghost together-btn" id="togetherBtn" title="和 TA 一起完成一件事">一起完成吧</button>
+          <button type="submit" class="send-btn" id="sendBtn">投递</button>
+        </form>
+      </div>
+    </main>
+
+    <!-- TA 的时刻 -->
+    <aside class="moments" id="momentsPanel">
+      <div class="moments-head">
+        <h2 class="moments-title">🕐 TA 的时刻</h2>
+        <div class="moments-actions">
+          <button class="ta-view-max-btn" id="taMaxBtn" title="放大查看">⤢</button>
+          <button class="icon-btn" id="taSettingsBtn" title="TA 设置">⚙</button>
+          <button class="icon-btn" id="momentsHide" title="隐藏">✕</button>
+        </div>
+      </div>
+      <div class="moments-status" id="momentsStatus">…</div>
+      <div class="moments-section">
+        <div class="moments-label">现在的想法 · 每 2 小时更新</div>
+        <div class="moments-thought" id="momentsThought">…</div>
+      </div>
+      <div class="moments-section">
+        <div class="moments-label">心情</div>
+        <div class="mood">
+          <div class="mood-row"><span>幸福</span><div class="mood-bar"><div class="mood-fill" id="mood-happy"></div></div><b class="mood-num" id="mood-happy-num">–</b></div>
+          <div class="mood-row"><span>轻松</span><div class="mood-bar"><div class="mood-fill" id="mood-relax"></div></div><b class="mood-num" id="mood-relax-num">–</b></div>
+          <div class="mood-row"><span>思念</span><div class="mood-bar"><div class="mood-fill" id="mood-miss"></div></div><b class="mood-num" id="mood-miss-num">–</b></div>
+        </div>
+      </div>
+      <div class="moments-section grow">
+        <div class="moments-label">TA 的安排</div>
+        <div class="ta-view-tabs">
+          <button class="ta-tab active" data-view="day" type="button">日视图</button>
+          <button class="ta-tab" data-view="week" type="button">周视图</button>
+          <button class="ta-tab" data-view="month" type="button">月视图</button>
+        </div>
+        <div class="ta-view-nav" id="taViewNav" hidden>
+          <button class="week-nav-btn" id="taPrev" type="button">‹</button>
+          <span class="week-label" id="taViewLabel"></span>
+          <button class="week-nav-btn" id="taNext" type="button">›</button>
+        </div>
+        <div class="moments-timeline" id="momentsTimeline"></div>
+      </div>
+    </aside>
+  </div>
+
+  <!-- 计划弹窗 -->
+  <div class="overlay" id="planOverlay" hidden>
+    <div class="modal">
+      <div class="modal-head">
+        <h3 id="planModalTitle">新建计划</h3>
+        <button class="modal-close" data-close="planOverlay" aria-label="关闭">✕</button>
+      </div>
+      <label class="field">
+        <span>计划内容</span>
+        <input type="text" id="planTitle" placeholder="例如：写完周报、跑步 30 分钟" maxlength="120" />
+      </label>
+      <label class="field">
+        <span>截止时间（可选）</span>
+        <input type="datetime-local" id="planDue" />
+      </label>
+      <div class="field">
+        <span>重要程度</span>
+        <div class="priority-pick" id="priorityPick">
+          <button type="button" data-priority="low" class="priority low">普通</button>
+          <button type="button" data-priority="medium" class="priority medium active">重要</button>
+          <button type="button" data-priority="high" class="priority high">紧急</button>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn ghost" data-close="planOverlay">取消</button>
+        <button class="btn primary" id="planSave">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 纪念日弹窗 -->
+  <div class="overlay" id="annivOverlay" hidden>
+    <div class="modal">
+      <div class="modal-head">
+        <h3 id="annivModalTitle">添加纪念日</h3>
+        <button class="modal-close" data-close="annivOverlay" aria-label="关闭">✕</button>
+      </div>
+      <label class="field">
+        <span>名称</span>
+        <input type="text" id="annivTitle" placeholder="例如：恋爱纪念日、TA 的生日" maxlength="24" />
+      </label>
+      <label class="field">
+        <span>日期（每年这一天都会提醒）</span>
+        <input type="date" id="annivDate" />
+      </label>
+      <div class="field">
+        <span>图标</span>
+        <div class="emoji-grid" id="annivEmojiGrid"></div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn ghost danger" id="annivDelete" hidden>删除</button>
+        <span class="spacer"></span>
+        <button class="btn ghost" data-close="annivOverlay">取消</button>
+        <button class="btn primary" id="annivSave">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 伙伴设置弹窗 -->
+  <div class="overlay" id="settingsOverlay" hidden>
+    <div class="modal">
+      <div class="modal-head">
+        <h3>设置你的伙伴</h3>
+        <button class="modal-close" data-close="settingsOverlay" aria-label="关闭">✕</button>
+      </div>
+      <div class="field">
+        <span>背景图片（大背景）</span>
+        <div class="upload-row">
+          <input type="file" id="bgUpload" accept="image/*" hidden />
+          <button class="btn ghost" id="bgUploadBtn">上传背景</button>
+          <button class="btn ghost danger" id="bgResetBtn">恢复默认</button>
+        </div>
+        <p class="hint">会作为整页玻璃质感背后的背景图。</p>
+      </div>
+
+      <div class="field">
+        <span>TA 的昵称</span>
+        <input type="text" id="companionNameInput" placeholder="给 TA 起个名字" maxlength="16" />
+      </div>
+      <div class="field">
+        <span>TA 的头像 · 选择一个表情</span>
+        <div class="emoji-grid" id="emojiGrid"></div>
+      </div>
+      <div class="field">
+        <span>或上传 TA 的头像</span>
+        <div class="upload-row">
+          <input type="file" id="avatarUpload" accept="image/*" hidden />
+          <button class="btn ghost" id="avatarUploadBtn">选择图片</button>
+          <button class="btn ghost danger" id="avatarResetBtn">恢复默认</button>
+        </div>
+      </div>
+
+      <div class="field">
+        <span>我的昵称</span>
+        <input type="text" id="userNameInput" placeholder="你的名字" maxlength="16" />
+      </div>
+      <div class="field">
+        <span>我的头像 · 选择一个表情</span>
+        <div class="emoji-grid" id="userEmojiGrid"></div>
+      </div>
+      <div class="field">
+        <span>或上传我的头像</span>
+        <div class="upload-row">
+          <input type="file" id="userAvatarUpload" accept="image/*" hidden />
+          <button class="btn ghost" id="userAvatarUploadBtn">选择图片</button>
+          <button class="btn ghost danger" id="userAvatarResetBtn">恢复默认</button>
+        </div>
+        <p class="hint">图片会保存在本地浏览器，不会上传到服务器。</p>
+      </div>
+      <div class="field">
+        <span>每日鼓励与催促频率</span>
+        <div class="priority-pick" id="freqPick">
+          <button type="button" data-freq="low" class="priority low">偶尔</button>
+          <button type="button" data-freq="medium" class="priority medium active">适中</button>
+          <button type="button" data-freq="high" class="priority high">频繁</button>
+        </div>
+      </div>
+      <div class="field">
+        <span>活跃时段</span>
+        <div class="time-range">
+          <input type="time" id="activeStart" />
+          <span>至</span>
+          <input type="time" id="activeEnd" />
+        </div>
+        <p class="hint">只在这段时间内随机提醒，避免深夜打扰。</p>
+      </div>
+
+      <div class="field">
+        <span>界面外观</span>
+        <div class="appearance-row">
+          <label for="glassOpacityRange">毛玻璃透明度</label>
+          <input type="range" id="glassOpacityRange" min="15" max="90" step="1" />
+          <output id="glassOpacityVal">55%</output>
+        </div>
+        <div class="appearance-row" style="margin-top:10px">
+          <label for="glassBlurRange">毛玻璃模糊度</label>
+          <input type="range" id="glassBlurRange" min="0" max="40" step="1" />
+          <output id="glassBlurVal">22px</output>
+        </div>
+        <div class="appearance-row" style="margin-top:10px">
+          <label for="radiusRange">圆角程度</label>
+          <input type="range" id="radiusRange" min="0" max="40" step="1" />
+          <output id="radiusVal">24px</output>
+        </div>
+        <div class="appearance-row" style="margin-top:10px">
+          <label for="bgBrightnessRange">背景图提亮</label>
+          <input type="range" id="bgBrightnessRange" min="20" max="200" step="1" />
+          <output id="bgBrightnessVal">100%</output>
+        </div>
+      </div>
+
+      <div class="field">
+        <span>自定义全局 CSS（粘贴入口）</span>
+        <textarea id="customCssTa" class="custom-css-ta" placeholder="粘贴 CSS 覆盖样式，例如：.brand { color: red; }"></textarea>
+      </div>
+
+      <div class="field">
+        <span>聊天框专属 CSS（对话字体 / 字号 / 对话框样式等）</span>
+        <textarea id="chatCssTa" class="custom-css-ta" placeholder="针对聊天框，例如：.card-body { font-size: 18px; line-height: 1.8; }&#10;.card { border-radius: 24px; }"></textarea>
+      </div>
+
+      <div class="field">
+        <span>数据导出 / 导入</span>
+        <div class="upload-row" style="flex-wrap:wrap">
+          <select id="dataScope" class="field-select" style="flex:1;min-width:120px">
+            <option value="all">全局</option>
+            <option value="chat">只有聊天</option>
+            <option value="schedule">只有日程</option>
+            <option value="settings">只有各类设置</option>
+          </select>
+          <button class="btn ghost" id="exportBtn">导出</button>
+          <input type="file" id="importFile" accept="application/json" hidden />
+          <button class="btn ghost" id="importBtn">导入</button>
+        </div>
+        <p class="hint">导出会把所选范围存成 JSON 文件；导入会覆盖对应范围的数据。</p>
+      </div>
+
+      <div class="modal-actions">
+        <button class="btn ghost" data-close="settingsOverlay">取消</button>
+        <button class="btn primary" id="settingsSave">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 回复设置弹窗 -->
+  <div class="overlay" id="replySettingsOverlay" hidden>
+    <div class="modal reply-modal">
+      <div class="modal-head">
+        <h3>回复设置</h3>
+        <button class="modal-close" data-close="replySettingsOverlay" aria-label="关闭">✕</button>
+      </div>
+      <p class="hint" style="text-align:left;margin:-6px 0 16px">控制对方回复的节奏、条数与内容比例；下方数值均为概率（%）。</p>
+      <div class="reply-fields" id="replySettingsFields"></div>
+      <div class="modal-actions">
+        <button class="btn ghost" data-close="replySettingsOverlay">取消</button>
+        <button class="btn primary" id="replySettingsSave">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 周日历弹窗 -->
+  <div class="overlay" id="weekOverlay" hidden>
+    <div class="modal week-modal">
+      <div class="modal-head">
+        <h3>🗓️ 周日历</h3>
+        <div class="week-nav">
+          <button class="week-nav-btn" id="weekPrev" aria-label="上一周">‹</button>
+          <span class="week-label" id="weekLabel">本周</span>
+          <button class="week-nav-btn" id="weekNext" aria-label="下一周">›</button>
+        </div>
+        <button class="modal-close" data-close="weekOverlay" aria-label="关闭">✕</button>
+      </div>
+      <div class="week-grid" id="weekGrid"></div>
+      <p class="hint" style="margin-top:14px">按周查看计划与纪念日，今天会被高亮。</p>
+    </div>
+  </div>
+
+  <!-- 番茄钟弹窗 -->
+  <div class="overlay" id="pomodoroOverlay" hidden>
+    <div class="modal pomodoro-modal">
+      <div class="modal-head">
+        <h3>🍅 陪伴番茄钟</h3>
+        <button class="modal-close" data-close="pomodoroOverlay" aria-label="关闭">✕</button>
+      </div>
+      <div class="pomo-ring-wrap">
+        <svg class="pomo-ring" viewBox="0 0 200 200" aria-hidden="true">
+          <circle class="pomo-track" cx="100" cy="100" r="88" />
+          <circle class="pomo-progress" id="pomoProgress" cx="100" cy="100" r="88" />
+        </svg>
+        <div class="pomo-center">
+          <div class="pomo-phase" id="pomoPhase">专注中</div>
+          <div class="pomo-time" id="pomoTime">25:00</div>
+        </div>
+      </div>
+      <div class="pomo-stats" id="pomoStats">今日 0 个 · 累计 0 个</div>
+      <div class="pomo-controls">
+        <button class="btn ghost" id="pomoReset">重置</button>
+        <button class="btn primary pomo-main" id="pomoToggle">开始</button>
+        <button class="btn ghost" id="pomoSkip">跳过</button>
+      </div>
+      <div class="pomo-settings">
+        <label class="pomo-field">专注 <input type="number" id="pomoFocus" min="1" max="120" /> 分</label>
+        <label class="pomo-field">短休 <input type="number" id="pomoShort" min="1" max="60" /> 分</label>
+        <label class="pomo-field">长休 <input type="number" id="pomoLong" min="1" max="60" /> 分</label>
+        <label class="pomo-field">长休间隔 <input type="number" id="pomoEvery" min="1" max="12" /> 个</label>
+      </div>
+      <p class="hint">专注结束会自动进入休息；休息结束后，点「开始」开启下一轮。</p>
+    </div>
+  </div>
+
+  <!-- 字卡库弹窗 -->
+  <div class="overlay" id="cardsOverlay" hidden>
+    <div class="modal cards-modal">
+      <div class="modal-head">
+        <h3>🎴 字卡库</h3>
+        <button class="modal-close" data-close="cardsOverlay" aria-label="关闭">✕</button>
+      </div>
+      <div class="lib-tabs" id="libTabs"></div>
+      <div class="lib-body" id="libBody"></div>
+    </div>
+  </div>
+
+  <!-- TA 时刻设置弹窗 -->
+  <div class="overlay" id="taSettingsOverlay" hidden>
+    <div class="modal ta-modal">
+      <div class="modal-head">
+        <h3>🕐 TA 的时刻设置</h3>
+        <button class="modal-close" data-close="taSettingsOverlay" aria-label="关闭">✕</button>
+      </div>
+      <div id="taSettingsBody"></div>
+      <div class="modal-actions">
+        <button class="btn ghost" data-close="taSettingsOverlay">取消</button>
+        <button class="btn primary" id="taSettingsSave">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 一起完成吧弹窗 -->
+  <div class="overlay" id="togetherOverlay" hidden>
+    <div class="modal">
+      <div class="modal-head">
+        <h3>🤝 一起完成吧</h3>
+        <button class="modal-close" data-close="togetherOverlay" aria-label="关闭">✕</button>
+      </div>
+      <label class="field">
+        <span>选择要一起完成的计划</span>
+        <select id="togetherPlan" class="field-select"></select>
+      </label>
+      <div class="time-range">
+        <label class="field" style="flex:1;margin:0"><span>开始</span><input type="time" id="togetherStart" /></label>
+        <label class="field" style="flex:1;margin:0"><span>结束</span><input type="time" id="togetherEnd" /></label>
+      </div>
+      <p class="hint" style="margin-top:14px">TA 可能会拒绝；同意后会取消该时段内其它事情，并把「一起完成」替换显示。</p>
+      <div class="modal-actions">
+        <button class="btn ghost" data-close="togetherOverlay">取消</button>
+        <button class="btn primary" id="togetherSave">邀请 TA</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 放大视图弹窗 -->
+  <div class="overlay" id="taMaxOverlay" hidden>
+    <div class="modal ta-max-modal">
+      <div class="modal-head">
+        <h3>TA 的安排 · 放大</h3>
+        <button class="modal-close" data-close="taMaxOverlay" aria-label="关闭">✕</button>
+      </div>
+      <div class="ta-max-body" id="taMaxBody"></div>
+    </div>
+  </div>
+
+  <!-- 事件编辑弹窗 -->
+  <div class="overlay" id="eventEditOverlay" hidden>
+    <div class="modal">
+      <div class="modal-head">
+        <h3>编辑事件</h3>
+        <button class="modal-close" data-close="eventEditOverlay" aria-label="关闭">✕</button>
+      </div>
+      <label class="field"><span>事件名称</span><input type="text" id="eventEditName" maxlength="40" /></label>
+      <div class="time-range">
+        <label class="field" style="flex:1;margin:0"><span>开始</span><input type="time" id="eventEditStart" /></label>
+        <label class="field" style="flex:1;margin:0"><span>结束</span><input type="time" id="eventEditEnd" /></label>
+      </div>
+      <p class="hint" style="margin-top:14px">结束时间早于开始时间时，视为跨到次日（如入睡）。</p>
+      <div class="modal-actions">
+        <button class="btn ghost danger" id="eventEditDelete">删除</button>
+        <span class="spacer"></span>
+        <button class="btn ghost" data-close="eventEditOverlay">取消</button>
+        <button class="btn primary" id="eventEditSave">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" hidden></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
