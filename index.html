@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <meta name="theme-color" content="#f5f0e8" />
   <meta name="description" content="STARPlanner · 字卡传讯式的计划伙伴：随机拼接回复、主动发消息、陪伴番茄钟、自定义纪念日、周日历、字卡库。" />
   <title>STARPlanner · 字卡传讯</title>
@@ -110,6 +110,7 @@
       <div class="composer">
         <div class="quick-replies" id="quickReplies"></div>
         <form class="composer-row" id="composerForm">
+          <button type="button" class="ask-fab" id="askFAB" aria-label="问问TA" title="问问TA">?</button>
           <input type="text" id="messageInput" class="composer-input" placeholder="" maxlength="500" autocomplete="off" />
           <button type="button" class="btn ghost together-btn" id="togetherBtn" title="和 TA 一起完成一件事">一起完成吧</button>
           <button type="submit" class="send-btn" id="sendBtn">投递</button>
@@ -337,6 +338,11 @@
           <input type="range" id="bgBrightnessRange" min="20" max="200" step="1" />
           <output id="bgBrightnessVal">100%</output>
         </div>
+        <div class="appearance-row" style="margin-top:10px">
+          <label for="fontScaleRange">字体大小</label>
+          <input type="range" id="fontScaleRange" min="0.8" max="1.4" step="0.05" />
+          <output id="fontScaleVal">100%</output>
+        </div>
       </div>
 
       <div class="field">
@@ -545,6 +551,101 @@
       </div>
       <div class="plan-preview-tabs" id="planPreviewTabs"></div>
       <div class="plan-preview-body" id="planPreviewBody"></div>
+    </div>
+  </div>
+
+  <!-- 休息模式 -->
+  <div class="rest-mode" id="restMode" hidden>
+    <div class="rest-ripple" aria-hidden="true"></div>
+    <button class="rest-ctrl rest-night" id="restNight" title="夜间模式">◐</button>
+    <button class="rest-ctrl rest-ripple-toggle" id="restRippleToggle" title="动态涟漪">∿</button>
+    <button class="rest-exit" id="restExit" title="退出休息">✕</button>
+    <div class="rest-scene">
+      <div class="rest-avatars">
+        <div class="rest-avatar" id="restAvatarThem"></div>
+        <div class="rest-heartbeat" aria-hidden="true">
+          <svg class="rest-ecg" viewBox="0 0 240 60" preserveAspectRatio="none">
+            <path class="rest-ecg-base" d="M0,30 L46,30 L58,30 L66,10 L74,50 L82,30 L96,30 L128,30 L140,30 L148,12 L156,48 L164,30 L178,30 L210,30 L240,30" />
+            <path class="rest-ecg-pulse" d="M0,30 L46,30 L58,30 L66,10 L74,50 L82,30 L96,30 L128,30 L140,30 L148,12 L156,48 L164,30 L178,30 L210,30 L240,30" />
+          </svg>
+        </div>
+        <div class="rest-avatar" id="restAvatarMe"></div>
+      </div>
+    </div>
+    <div class="rest-chat">
+      <div class="rest-messages" id="restMessages"></div>
+      <div class="rest-composer" id="restComposer">
+        <button class="rest-quick" id="restComfort" type="button">安慰</button>
+        <button class="rest-quick" id="restEncourage" type="button">鼓励</button>
+        <input type="text" class="rest-input" id="restInput" maxlength="500" autocomplete="off" placeholder="说点什么…" />
+        <button class="rest-send" id="restSend" type="button">发送</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 问问TA -->
+  <div class="overlay" id="askTAOverlay" hidden>
+    <div class="modal ask-ta-modal">
+      <div class="ask-ta-tabs">
+        <button class="ask-tab active" id="askTabSingle" type="button">单选题</button>
+        <button class="ask-tab" id="askTabMulti" type="button">多选题</button>
+      </div>
+      <div class="ask-ta-body">
+        <div class="ask-sec">
+          <label class="ask-label">问题</label>
+          <div class="ask-input-row">
+            <input type="text" id="askQuestion" class="ask-input" placeholder="输入你的问题…" maxlength="120" autocomplete="off" />
+            <button class="ask-mini" id="askQClear" type="button" title="清空">×</button>
+            <button class="ask-mini" id="askQPhoto" type="button" title="上传照片">🖼</button>
+            <input type="file" id="askQPhotoFile" accept="image/*" hidden />
+          </div>
+        </div>
+
+        <div class="ask-sec" id="askMaxSec" hidden>
+          <label class="ask-label">最多选几个</label>
+          <div class="ask-input-row ask-num-row">
+            <input type="number" id="askMaxPick" class="ask-input ask-num" min="1" value="1" />
+            <span class="ask-unit">个</span>
+          </div>
+        </div>
+
+        <div class="ask-sec">
+          <label class="ask-label">选项</label>
+          <div class="ask-input-row ask-options-row">
+            <textarea id="askOptions" class="ask-input ask-options" placeholder="一行一个选项"></textarea>
+            <div class="ask-mini-col">
+              <button class="ask-mini" id="askOptClear" type="button" title="清空">×</button>
+              <button class="ask-mini" id="askOptPhoto" type="button" title="上传照片">🖼</button>
+              <input type="file" id="askOptPhotoFile" accept="image/*" hidden />
+            </div>
+          </div>
+        </div>
+
+        <div class="ask-sec">
+          <label class="ask-label">回答时间</label>
+          <div class="ask-time-row">
+            <button class="ask-tab small active" id="askTimeRandom" type="button">随机</button>
+            <button class="ask-tab small" id="askTimeCustom" type="button">自定义</button>
+            <span class="ask-time-custom" id="askTimeCustomField" hidden>
+              <input type="number" id="askTimeNum" class="ask-input ask-num" min="1" value="10" />
+              <select id="askTimeUnit" class="ask-unit-sel">
+                <option value="sec">秒</option>
+                <option value="min">分钟</option>
+              </select>
+            </span>
+          </div>
+        </div>
+
+        <button class="btn primary ask-submit" id="askSubmit" type="button">问 TA</button>
+
+        <div class="ask-sec">
+          <div class="ask-hist-head">
+            <span class="ask-hist-title">历史记录 <span class="ask-hist-count" id="askHistCount">0</span></span>
+            <button class="ask-mini ask-hist-toggle" id="askHistToggle" type="button" title="展开/收起">▾</button>
+          </div>
+          <div class="ask-hist-list" id="askHistList" hidden></div>
+        </div>
+      </div>
     </div>
   </div>
 

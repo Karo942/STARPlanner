@@ -168,13 +168,15 @@
       user: { name: "我", avatar: { type: "emoji", value: "😊" } },
       plans: [],
       messages: [],
-      settings: { frequency: "medium", activeStart: "08:00", activeEnd: "23:00", theme: "light", bgImage: "", glassOpacity: 55, radius: 24, customCss: "", bgBrightness: 100, glassBlur: 22, chatCss: "" },
+      settings: { frequency: "medium", activeStart: "08:00", activeEnd: "23:00", theme: "light", bgImage: "", glassOpacity: 55, radius: 24, customCss: "", bgBrightness: 100, glassBlur: 22, chatCss: "", fontScale: 1 },
       schedule: { date: "", items: [] },
       planReminders: {},
       anniversaries: [],
       annivGreeted: {},
       favorites: [],
       customGroups: [],
+      askTA: { history: [] },
+      rest: { night: false, ripple: true },
       cardLib: {
         replyGroups: [],
         kaomoji: [],
@@ -389,6 +391,13 @@
     if (styleEl) styleEl.textContent = state.settings.chatCss || "";
   }
 
+  function applyFontScale() {
+    var s = Number(state.settings.fontScale) || 1;
+    s = Math.max(0.8, Math.min(1.4, s));
+    document.body.style.zoom = s;
+    document.documentElement.style.setProperty("--font-scale", s);
+  }
+
   function applyRadius() {
     var root = document.documentElement;
     var r = Math.max(0, Math.min(40, Number(state.settings.radius) || 24));
@@ -437,6 +446,7 @@
     revealLatest();
     save();
     if (!opts.silent) bumpUnread();
+    if (!$("restMode").hidden) renderRestMessages();
     return msg;
   }
 
@@ -759,6 +769,8 @@
     $("radiusVal").textContent = state.settings.radius + "px";
     $("bgBrightnessRange").value = state.settings.bgBrightness;
     $("bgBrightnessVal").textContent = state.settings.bgBrightness + "%";
+    $("fontScaleRange").value = state.settings.fontScale;
+    $("fontScaleVal").textContent = Math.round(state.settings.fontScale * 100) + "%";
     $("customCssTa").value = state.settings.customCss;
     $("chatCssTa").value = state.settings.chatCss;
     $("settingsOverlay").hidden = false;
@@ -1543,6 +1555,65 @@
       b.addEventListener("click", function () { sendCategoryCard(q.cat); });
       quickRepliesEl.appendChild(b);
     });
+    var restBtn = el("button", "quick-reply rest-entry", "进入休息");
+    restBtn.type = "button";
+    restBtn.addEventListener("click", enterRestMode);
+    quickRepliesEl.appendChild(restBtn);
+  }
+  /* ---------------- 休息模式 ---------------- */
+  function applyRestTheme() {
+    var mode = $("restMode");
+    var r = state.rest || { night: false, ripple: true };
+    mode.classList.toggle("night", !!r.night);
+    mode.classList.toggle("no-ripple", !r.ripple);
+    $("restNight").textContent = r.night ? "◑" : "◐";
+  }
+  function enterRestMode() {
+    renderAvatar($("restAvatarThem"), state.companion.avatar);
+    renderAvatar($("restAvatarMe"), state.user.avatar);
+    applyRestTheme();
+    renderRestMessages();
+    $("restMode").hidden = false;
+    setTimeout(function () { $("restInput").focus(); }, 80);
+  }
+  function exitRestMode() {
+    $("restMode").hidden = true;
+  }
+  function renderRestMessages() {
+    var box = $("restMessages");
+    box.innerHTML = "";
+    var msgs = state.messages.filter(function (m) { return m.text && m.text.trim(); }).slice(-50);
+    var lastRole = null, lastTime = 0;
+    msgs.forEach(function (m) {
+      var isMe = m.role !== "companion";
+      if (lastRole === null || lastRole !== m.role || (m.time - lastTime) > 5 * 60000) {
+        box.appendChild(el("div", "rest-time", fmtClock(m.time)));
+      }
+      var row = el("div", "rest-msg " + (isMe ? "me" : "them"));
+      row.textContent = m.text;
+      box.appendChild(row);
+      lastRole = m.role;
+      lastTime = m.time;
+    });
+    requestAnimationFrame(function () { box.scrollTop = box.scrollHeight; });
+  }
+  function showRestTyping() {
+    var box = $("restMessages");
+    var t = el("div", "rest-typing");
+    for (var i = 0; i < 3; i++) t.appendChild(el("span", "dot"));
+    box.appendChild(t);
+    box.scrollTop = box.scrollHeight;
+  }
+  function restSend() {
+    var v = $("restInput").value.trim();
+    if (!v) return;
+    $("restInput").value = "";
+    addMessage("user", v);
+    showRestTyping();
+    scheduleReply();
+    var composer = $("restComposer");
+    composer.classList.add("breathing");
+    setTimeout(function () { composer.classList.remove("breathing"); }, 1500);
   }
   function sendCategoryCard(cat) {
     if (cat === "remind") {
@@ -1706,6 +1777,98 @@
     toast("已删除「" + scopeLabel(scope) + "」数据");
   }
 
+  /* ---------------- 问问TA ---------------- */
+  var askType = "single";
+  var askTimeMode = "random";
+  var askHistOpen = false;
+  var askQuestionPhoto = null;
+  function readPhoto(file, cb) {
+    var reader = new FileReader();
+    reader.onload = function () { cb(reader.result); };
+    reader.readAsDataURL(file);
+  }
+  function openAskTA() {
+    renderAskHistory();
+    $("askTAOverlay").hidden = false;
+  }
+  function askSetType(type) {
+    askType = type;
+    $("askTabSingle").classList.toggle("active", type === "single");
+    $("askTabMulti").classList.toggle("active", type === "multi");
+    $("askMaxSec").hidden = type !== "multi";
+  }
+  function askSetTimeMode(mode) {
+    askTimeMode = mode;
+    $("askTimeRandom").classList.toggle("active", mode === "random");
+    $("askTimeCustom").classList.toggle("active", mode === "custom");
+    $("askTimeCustomField").hidden = mode !== "custom";
+  }
+  function askSubmit() {
+    var q = $("askQuestion").value.trim();
+    if (!q) { toast("请先填写问题"); return; }
+    var opts = String($("askOptions").value || "").split("\n").map(function (s) { return s.trim(); }).filter(Boolean);
+    if (opts.length < 2) { toast("请至少填写两个选项（一行一个）"); return; }
+    var maxPick = parseInt($("askMaxPick").value, 10) || 1;
+    if (askType === "multi") { maxPick = Math.max(1, Math.min(maxPick, opts.length)); }
+    var delay;
+    if (askTimeMode === "custom") {
+      var n = parseInt($("askTimeNum").value, 10) || 10;
+      var unit = $("askTimeUnit").value;
+      delay = (unit === "min" ? 60 : 1) * n;
+    } else {
+      delay = randInt(2, 8);
+    }
+    var question = { id: uid(), type: askType, question: q, options: opts, maxPick: askType === "multi" ? maxPick : 1, photo: askQuestionPhoto, askedAt: Date.now(), choice: null };
+    toast("TA 正在思考…");
+    setTimeout(function () {
+      question.choice = taPickChoice(question);
+      state.askTA.history.unshift(question);
+      if (state.askTA.history.length > 100) state.askTA.history = state.askTA.history.slice(0, 100);
+      save();
+      addMessage("companion", "「" + question.question + "」我选：" + question.choice.join("、"), "remind");
+      renderAskHistory();
+      askResetForm();
+      toast("TA 已回答 ✅");
+    }, delay * 1000);
+  }
+  function taPickChoice(q) {
+    var opts = q.options.slice();
+    var pick = [];
+    var count = q.type === "multi" ? (q.maxPick || 1) : 1;
+    for (var i = 0; i < count && opts.length; i++) {
+      pick.push(opts.splice(Math.floor(Math.random() * opts.length), 1)[0]);
+    }
+    return pick;
+  }
+  function askResetForm() {
+    $("askQuestion").value = "";
+    $("askOptions").value = "";
+    $("askMaxPick").value = "1";
+    askQuestionPhoto = null;
+  }
+  function renderAskHistory() {
+    var list = $("askHistList");
+    list.innerHTML = "";
+    var hist = state.askTA.history || [];
+    $("askHistCount").textContent = hist.length;
+    if (!hist.length) {
+      list.appendChild(el("div", "ask-hist-empty", "还没有问过 TA 问题"));
+      return;
+    }
+    hist.forEach(function (h) {
+      var item = el("div", "ask-hist-item");
+      item.appendChild(el("div", "ask-hist-meta", (h.type === "multi" ? "多选题" : "单选题") + " · " + fmtClock(h.askedAt)));
+      item.appendChild(el("div", "ask-hist-q", h.question));
+      if (h.photo) {
+        var img = el("img", "ask-hist-photo");
+        img.src = h.photo;
+        item.appendChild(img);
+      }
+      if (h.choice && h.choice.length) item.appendChild(el("div", "ask-hist-choice", "TA 的选择：" + h.choice.join("、")));
+      list.appendChild(item);
+    });
+  }
+
   /* ---------------- 事件绑定 ---------------- */
   function bindEvents() {
     composerForm.addEventListener("submit", function (e) { e.preventDefault(); sendMessage(messageInput.value); });
@@ -1808,6 +1971,11 @@
       $("bgBrightnessVal").textContent = this.value + "%";
       applyBackground();
     });
+    $("fontScaleRange").addEventListener("input", function () {
+      state.settings.fontScale = Number(this.value);
+      $("fontScaleVal").textContent = Math.round(this.value * 100) + "%";
+      applyFontScale();
+    });
     $("customCssTa").addEventListener("input", function () {
       state.settings.customCss = this.value;
       applyCustomCss();
@@ -1835,6 +2003,28 @@
     $("deleteDataBtn").addEventListener("click", deleteData);
     $("planGroupAdd").addEventListener("click", function () { promptNewGroup($("planGroup").value); });
     $("planPreviewGroupAdd").addEventListener("click", function () { promptNewGroup(); renderPlanPreview(); });
+
+    $("restExit").addEventListener("click", exitRestMode);
+    $("restSend").addEventListener("click", restSend);
+    $("restInput").addEventListener("keydown", function (e) { if (e.key === "Enter") restSend(); });
+    $("restComfort").addEventListener("click", function () { sendCategoryCard("comfort"); renderRestMessages(); });
+    $("restEncourage").addEventListener("click", function () { sendCategoryCard("encourage"); renderRestMessages(); });
+    $("restNight").addEventListener("click", function () { state.rest.night = !state.rest.night; save(); applyRestTheme(); });
+    $("restRippleToggle").addEventListener("click", function () { state.rest.ripple = !state.rest.ripple; save(); applyRestTheme(); });
+
+    $("askFAB").addEventListener("click", openAskTA);
+    $("askTabSingle").addEventListener("click", function () { askSetType("single"); });
+    $("askTabMulti").addEventListener("click", function () { askSetType("multi"); });
+    $("askTimeRandom").addEventListener("click", function () { askSetTimeMode("random"); });
+    $("askTimeCustom").addEventListener("click", function () { askSetTimeMode("custom"); });
+    $("askQClear").addEventListener("click", function () { $("askQuestion").value = ""; });
+    $("askOptClear").addEventListener("click", function () { $("askOptions").value = ""; });
+    $("askQPhoto").addEventListener("click", function () { $("askQPhotoFile").click(); });
+    $("askOptPhoto").addEventListener("click", function () { $("askOptPhotoFile").click(); });
+    $("askQPhotoFile").addEventListener("change", function () { var f = this.files && this.files[0]; if (f) readPhoto(f, function (d) { askQuestionPhoto = d; toast("照片已附加"); }); this.value = ""; });
+    $("askOptPhotoFile").addEventListener("change", function () { var f = this.files && this.files[0]; if (f) readPhoto(f, function (d) { askQuestionPhoto = d; toast("照片已附加"); }); this.value = ""; });
+    $("askSubmit").addEventListener("click", askSubmit);
+    $("askHistToggle").addEventListener("click", function () { askHistOpen = !askHistOpen; $("askHistList").hidden = !askHistOpen; $("askHistToggle").classList.toggle("open", askHistOpen); });
 
     $("notifyBtn").addEventListener("click", requestNotify);
     $("themeBtn").addEventListener("click", function () {
@@ -1918,6 +2108,7 @@
     applyRadius();
     applyCustomCss();
     applyChatCss();
+    applyFontScale();
     updateCompanionUI();
     updateNotifyBtn();
     renderQuickReplies();
@@ -1977,8 +2168,17 @@
     state.ta.cfg.events.forEach(function (e) { if (!e.color) { e.color = pick(TA_COLORS); changed = true; } });
     if (changed) save();
   }
+  function taInActiveWindow(startMs, endMs) {
+    var d = new Date(startMs);
+    var startMin = d.getHours() * 60 + d.getMinutes();
+    var endMin = startMin + Math.round((endMs - startMs) / 60000);
+    var as = toMin(state.settings.activeStart || "07:00");
+    var ae = toMin(state.settings.activeEnd || "23:00");
+    return startMin >= as && endMin <= ae;
+  }
   function addEventNoConflict(evt, start, end, type) {
     type = type || "act";
+    if (!taInActiveWindow(start, end)) return null;
     var conflict = state.ta.events.some(function (e) { return end > e.start && start < e.end; });
     if (conflict) return null;
     var ev = { id: uid(), name: evt.name, color: evt.color, start: start, end: end, type: type };
@@ -2064,7 +2264,9 @@
     save();
   }
   function scheduleTogether(plan, start, end) {
-    state.ta.events = state.ta.events.filter(function (e) { return e.type === "together" || !(start < e.end && end > e.start); });
+    if (!taInActiveWindow(start, end)) { toast("该时段不在活跃时段内，无法一起完成"); return; }
+    var conflict = state.ta.events.some(function (e) { return end > e.start && start < e.end; });
+    if (conflict) { toast("该时段已有安排，无法一起完成"); return; }
     state.ta.events.push({ id: uid(), name: "陪" + state.user.name + "一起完成计划-" + plan.title, start: start, end: end, type: "together", planId: plan.id, color: "#9f86c0" });
     save();
     renderMoments();
