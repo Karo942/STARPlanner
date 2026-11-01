@@ -168,7 +168,7 @@
       user: { name: "我", avatar: { type: "emoji", value: "😊" } },
       plans: [],
       messages: [],
-      settings: { frequency: "medium", activeStart: "08:00", activeEnd: "23:00", theme: "light", bgImage: "", glassOpacity: 55, radius: 24, customCss: "", bgBrightness: 100, glassBlur: 22, chatCss: "", fontScale: 1 },
+      settings: { frequency: "medium", activeStart: "08:00", activeEnd: "23:00", theme: "light", bgImage: "", glassOpacity: 55, radius: 24, customCss: "", bgBrightness: 100, glassBlur: 22, chatCss: "", fontScale: 1, themeColor: "#8b9a7b" },
       schedule: { date: "", items: [] },
       planReminders: {},
       anniversaries: [],
@@ -361,9 +361,40 @@
   var currentEditEvent = null;
 
   /* ---------------- 主题 ---------------- */
+  function hexToRgb(hex) {
+    var h = (hex || "#8b9a7b").replace("#", "");
+    if (h.length === 3) h = h.split("").map(function (c) { return c + c; }).join("");
+    var n = parseInt(h, 16);
+    if (isNaN(n)) return { r: 139, g: 154, b: 123 };
+    return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
+  }
+  function rgbToHex(r, g, b) {
+    return "#" + [r, g, b].map(function (x) { x = Math.max(0, Math.min(255, Math.round(x))); return ("0" + x.toString(16)).slice(-2); }).join("");
+  }
+  function mixHex(hex, target, ratio) {
+    var a = hexToRgb(hex), b = hexToRgb(target);
+    return rgbToHex(a.r + (b.r - a.r) * ratio, a.g + (b.g - a.g) * ratio, a.b + (b.b - a.b) * ratio);
+  }
+  function applyThemeColor() {
+    var root = document.documentElement;
+    var c = state.settings.themeColor || "#8b9a7b";
+    var dark = state.settings.theme === "dark";
+    var rgb = hexToRgb(c);
+    root.style.setProperty("--sage-rgb", rgb.r + ", " + rgb.g + ", " + rgb.b);
+    if (dark) {
+      root.style.setProperty("--sage", mixHex(c, "#ffffff", 0.1));
+      root.style.setProperty("--sage-deep", mixHex(c, "#ffffff", 0.26));
+      root.style.setProperty("--sage-soft", mixHex(c, "#000000", 0.72));
+    } else {
+      root.style.setProperty("--sage", c);
+      root.style.setProperty("--sage-deep", mixHex(c, "#000000", 0.16));
+      root.style.setProperty("--sage-soft", mixHex(c, "#ffffff", 0.85));
+    }
+  }
   function applyTheme() {
     document.documentElement.setAttribute("data-theme", state.settings.theme);
     $("themeBtn").textContent = state.settings.theme === "dark" ? "☀" : "☾";
+    applyThemeColor();
     applyGlass();
   }
 
@@ -531,7 +562,11 @@
   }
 
   function revealLatest() {
-    requestAnimationFrame(function () { messagesEl.scrollTop = messagesEl.scrollHeight; });
+    requestAnimationFrame(function () {
+      requestAnimationFrame(function () {
+        messagesEl.scrollTop = messagesEl.scrollHeight;
+      });
+    });
   }
 
   function showTyping() {
@@ -771,6 +806,8 @@
     $("bgBrightnessVal").textContent = state.settings.bgBrightness + "%";
     $("fontScaleRange").value = state.settings.fontScale;
     $("fontScaleVal").textContent = Math.round(state.settings.fontScale * 100) + "%";
+    $("themeColorInput").value = state.settings.themeColor || "#8b9a7b";
+    $("themeColorVal").textContent = state.settings.themeColor || "#8b9a7b";
     $("customCssTa").value = state.settings.customCss;
     $("chatCssTa").value = state.settings.chatCss;
     $("settingsOverlay").hidden = false;
@@ -1976,6 +2013,11 @@
       $("fontScaleVal").textContent = Math.round(this.value * 100) + "%";
       applyFontScale();
     });
+    $("themeColorInput").addEventListener("input", function () {
+      state.settings.themeColor = this.value;
+      $("themeColorVal").textContent = this.value;
+      applyThemeColor();
+    });
     $("customCssTa").addEventListener("input", function () {
       state.settings.customCss = this.value;
       applyCustomCss();
@@ -2116,6 +2158,7 @@
     renderAnniversaries();
     renderFavorites();
     renderAllMessages();
+    revealLatest();
 
     if (!state.pomoTimer.started && !state.pomoTimer.running) state.pomoTimer.remaining = pomoDuration();
     syncPomoInputs();

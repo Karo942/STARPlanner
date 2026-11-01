@@ -13,6 +13,7 @@
   --sage: #8b9a7b;
   --sage-deep: #6f8060;
   --sage-soft: #e6ead9;
+  --sage-rgb: 139, 154, 123;
   --line: #e0d8c8;
   --hairline: rgba(58, 58, 58, 0.08);
   --warn: #b06a5e;
@@ -31,6 +32,7 @@ html[data-theme="dark"] {
   --sage: #9cab86;
   --sage-deep: #b3bf9b;
   --sage-soft: #33382b;
+  --sage-rgb: 156, 171, 134;
   --line: #3a362c;
   --hairline: rgba(233, 228, 216, 0.09);
   --warn: #d18a7e;
@@ -2351,13 +2353,13 @@ input[type="range"] {
   height: 120vmax;
   border-radius: 50%;
   transform: translate(-50%, -50%) scale(0.15);
-  background: radial-gradient(circle, rgba(154, 168, 143, 0.15) 0%, rgba(154, 168, 143, 0) 62%);
+  background: radial-gradient(circle, rgba(var(--sage-rgb), 0.15) 0%, rgba(var(--sage-rgb), 0) 62%);
   animation: rest-ripple 11s ease-out infinite;
 }
 
 .rest-ripple::after {
   animation-delay: 5.5s;
-  background: radial-gradient(circle, rgba(168, 181, 178, 0.12) 0%, rgba(168, 181, 178, 0) 62%);
+  background: radial-gradient(circle, rgba(var(--sage-rgb), 0.1) 0%, rgba(var(--sage-rgb), 0) 62%);
 }
 
 @keyframes rest-ripple {
@@ -2500,7 +2502,7 @@ input[type="range"] {
 
 .rest-ecg-pulse {
   fill: none;
-  stroke: #9AA88F;
+  stroke: var(--sage);
   stroke-width: 1.7;
   stroke-linecap: round;
   stroke-linejoin: round;
@@ -2509,7 +2511,7 @@ input[type="range"] {
 }
 
 .rest-mode.night .rest-ecg-pulse {
-  stroke: #6f7d68;
+  stroke: var(--sage-deep);
 }
 
 @keyframes rest-ecg-flow {
@@ -2710,7 +2712,7 @@ input[type="range"] {
 }
 
 .rest-input:focus {
-  border-bottom-color: #9AA88F;
+  border-bottom-color: var(--sage);
 }
 
 .rest-send {
@@ -2719,7 +2721,7 @@ input[type="range"] {
   font-weight: 400;
   font-size: 15px;
   letter-spacing: 0.06em;
-  color: #9AA88F;
+  color: var(--sage);
   background: transparent;
   border: none;
   padding: 8px 2px;
@@ -2728,7 +2730,7 @@ input[type="range"] {
 }
 
 .rest-mode.night .rest-send {
-  color: #8a9a83;
+  color: var(--sage-deep);
 }
 
 .rest-send:disabled {
