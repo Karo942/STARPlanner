@@ -19,6 +19,11 @@
 
   <!-- 联系人选择（每次开屏后） -->
   <div class="contact-screen" id="contactScreen" hidden>
+    <button class="lib-share-toggle" id="libShareToggle" type="button" aria-pressed="true" title="字卡库：所有联系人共享（点击改为各自独立）">
+      <span class="lib-share-icon" aria-hidden="true">▤</span>
+      <span class="lib-share-track" aria-hidden="true"><span class="lib-share-knob"></span></span>
+      <span class="lib-share-state">共享</span>
+    </button>
     <div class="contact-sheet">
       <header class="contact-head">
         <div class="contact-brand">🌟 STARPlanner</div>
@@ -27,7 +32,7 @@
       </header>
       <div class="contact-list" id="contactList"></div>
       <button class="contact-new" id="contactNewBtn" type="button">＋ 新建联系人</button>
-      <p class="contact-foot">回复设置 · 字卡库 · 周日历 · 计划 在所有联系人之间共享</p>
+      <p class="contact-foot" id="contactFoot">回复设置 · 字卡库 · 周日历 · 计划 在所有联系人之间共享</p>
     </div>
   </div>
 
@@ -403,6 +408,7 @@
           <button class="btn ghost" id="importBtn">导入</button>
         </div>
         <p class="hint">「全局」会导出所有联系人（含问过 TA 的全部问题与答案、每位「你的XX」称呼）与共享数据；导入会覆盖或合并对应数据。</p>
+        <p class="hint" id="storageInfo" style="text-align:left">正在统计本地存储…</p>
       </div>
 
       <div class="field">

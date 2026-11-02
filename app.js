@@ -57,14 +57,7 @@
       "≧◡≦", "ᕕ( ᐛ )ᕗ", "（*´▽｀*）", "(๑˃̵ᴗ˂̵)", "(つ≧▽≦)つ", "(づ｡◕‿‿◕｡)づ", "(ง •̀_•́)ง"
     ],
     emoji: ["😊", "❤️", "✨", "🌙", "🌸", "🥰", "☀️", "🍀", "💫", "🫶", "🌿", "💛"],
-    remind: [
-      "该喝水了", "别忘了喝水", "喝口水吧", "你今天水喝够了吗", "水杯空了很久了哦",
-      "到点了，喝口水再忙", "水在桌上等你，别让它凉透", "喝口水，就当我陪你歇一会儿",
-      "到饭点啦，去吃饭吧", "该吃饭了哦，别饿着", "记得吃热乎的，别随便对付一口",
-      "别忙忘了吃饭，胃是自己的", "饭要按时吃，我才会放心", "好好吃饭的人，运气不会太差哦",
-      "夜深了，饿不饿？想吃点夜宵吗", "饿着肚子睡觉可不好，去弄点吃的吧", "别只啃饼干，夜宵也要认真吃",
-      "嗓子干了吧，喝口水", "我在呢，先喝口水", "水凉了就换，但得先喝"
-    ],
+    remind: [],
     encourage: [
       "早安呀，新的一天也要元气满满哦 ☀️", "你已经比昨天的自己更棒了，继续保持！",
       "每一个小进步都算数，加油！", "慢慢来，反而比较快。", "今天也要开开心心的呀～",
@@ -93,24 +86,6 @@
 
   /* ---------------- 模板文案（含 {plan}/{min}/{name} 占位符） ---------------- */
   var POOL = {
-    urge: [
-      "别偷懒啦，你的计划还在等你哦！",
-      "「{plan}」还没完成，快去搞定它吧 🔔",
-      "拖延只会让事情更难，现在就开始！",
-      "再小的行动也比空想强，动起来～",
-      "你的「{plan}」进度如何啦？我在监督你哦 😉",
-      "该行动啦，完成之后记得奖励自己！",
-      "不要等明天啦，就现在，迈出第一步！"
-    ],
-    remind: [
-      "提醒一下，「{plan}」这件事别忘了呀～",
-      "「{plan}」的时间快到啦，准备好了吗？",
-      "记得你的「{plan}」哦，加油！"
-    ],
-    overdue: [
-      "「{plan}」好像已经过期了，要么重新定个时间，要么就放下它吧。",
-      "「{plan}」还没完成呢，别让它在列表里躺太久哦。"
-    ],
     plan: [
       "计划不需要完美，开始就是成功的一半。",
       "我们可以把大目标拆成小步骤，一步一步来。",
@@ -169,14 +144,18 @@
      共享：回复设置、字卡库、表情包、周日历（计划）、计划本身
      私有（每位联系人各一份）：TA 的时刻、纪念日、收藏、总设置、聊天记录、问问TA
      -------------------------------------------------------- */
-  var CONTACT_FIELDS = ["companion", "messages", "favorites", "anniversaries", "annivGreeted", "askTA", "seen", "schedule", "settings", "ta", "lastChatAt"];
-  var SHARED_FIELDS = ["user", "plans", "customGroups", "planReminders", "rest", "cardLib", "pomodoro", "pomoTimer", "showMoments", "reply", "stickers"];
+  var CONTACT_FIELDS = ["companion", "messages", "favorites", "anniversaries", "annivGreeted", "askTA", "seen", "schedule", "settings", "ta", "lastChatAt", "cardLib", "stickers", "libOwned"];
+  var SHARED_FIELDS = ["user", "plans", "customGroups", "planReminders", "rest", "cardLib", "pomodoro", "pomoTimer", "showMoments", "reply", "stickers", "cardLibShared"];
 
   function defaultSettings() {
     return { frequency: "medium", activeStart: "08:00", activeEnd: "23:00", theme: "light", bgImage: "", glassOpacity: 55, radius: 24, customCss: "", bgBrightness: 100, glassBlur: 22, chatCss: "", fontScale: 1, themeColor: "#8b9a7b" };
   }
   function defaultCardLib() {
-    return { replyGroups: [], kaomoji: [], emoji: [], remind: [], encourage: [], comfort: [], thought: [] };
+    return {
+      replyGroups: [], kaomoji: [], emoji: [], remind: [], encourage: [], comfort: [], thought: [],
+      togetherAccept: ["好呀，B，陪你一起完成「A」～"],
+      togetherReject: ["今天不太想安排这个，改天陪你完成「A」好不好？"]
+    };
   }
   function defaultReply() {
     return {
@@ -245,7 +224,10 @@
       seen: false,
       schedule: { date: "", items: [] },
       settings: defaultSettings(),
-      ta: defaultTA()
+      ta: defaultTA(),
+      cardLib: defaultCardLib(),
+      stickers: [],
+      libOwned: false
     };
     return extra ? mergeDeep(c, extra) : c;
   }
@@ -261,7 +243,8 @@
       pomoTimer: defaultPomoTimer(),
       showMoments: true,
       reply: defaultReply(),
-      stickers: []
+      stickers: [],
+      cardLibShared: true
     };
   }
   function defaultState() {
@@ -302,6 +285,7 @@
             return merged;
           });
           out.activeId = (obj.activeId && contactExists(out.contacts, obj.activeId)) ? obj.activeId : out.contacts[0].id;
+          try { localStorage.removeItem(LEGACY_KEY); } catch (e2) {}
           return out;
         }
       } catch (e) {}
@@ -313,7 +297,11 @@
       try {
         var old = JSON.parse(legacyRaw);
         out.shared = mergeDeep(defaultShared(), pickFields(old, SHARED_FIELDS));
-        var contact = defaultContact(pickFields(old, CONTACT_FIELDS));
+        var legacyFields = pickFields(old, CONTACT_FIELDS);
+        delete legacyFields.cardLib;
+        delete legacyFields.stickers;
+        delete legacyFields.libOwned;
+        var contact = defaultContact(legacyFields);
         contact.lastChatAt = lastMessageAt(contact.messages);
         out.contacts = [contact];
         out.activeId = contact.id;
@@ -337,12 +325,26 @@
     var s = {};
     SHARED_FIELDS.forEach(function (k) { s[k] = st.shared[k]; });
     CONTACT_FIELDS.forEach(function (k) { s[k] = c[k]; });
+    if (st.shared.cardLibShared === false) {
+      s.cardLib = c.cardLib || defaultCardLib();
+      s.stickers = c.stickers || [];
+    } else {
+      s.cardLib = st.shared.cardLib || defaultCardLib();
+      s.stickers = st.shared.stickers || [];
+    }
     return s;
   }
   function loadActiveIntoState() {
     var c = contactById(store.activeId);
     if (!c) return;
     CONTACT_FIELDS.forEach(function (k) { state[k] = c[k]; });
+    if (store.shared.cardLibShared === false) {
+      state.cardLib = c.cardLib || defaultCardLib();
+      state.stickers = c.stickers || [];
+    } else {
+      state.cardLib = store.shared.cardLib || defaultCardLib();
+      state.stickers = store.shared.stickers || [];
+    }
   }
   function reloadStateFromStore() {
     var fresh = buildState(store, store.activeId);
@@ -384,21 +386,145 @@
   function persistActiveContact() {
     var c = contactById(store.activeId);
     if (!c) return;
-    CONTACT_FIELDS.forEach(function (k) { c[k] = state[k]; });
-    SHARED_FIELDS.forEach(function (k) { store.shared[k] = state[k]; });
+    CONTACT_FIELDS.forEach(function (k) {
+      if ((k === "cardLib" || k === "stickers") && state.cardLibShared !== false) return;
+      c[k] = state[k];
+    });
+    SHARED_FIELDS.forEach(function (k) {
+      if ((k === "cardLib" || k === "stickers") && state.cardLibShared === false) return;
+      store.shared[k] = state[k];
+    });
+    if (state.cardLibShared === false) c.libOwned = true;
   }
-  function save() {
+  function save(opts) {
+    opts = opts || {};
     persistActiveContact();
     var payload = { version: 2, activeId: store.activeId, shared: store.shared, contacts: store.contacts };
+    var json;
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(payload, jsonReplacer));
-      if (store.legacy) {
-        try { localStorage.removeItem(LEGACY_KEY); } catch (e2) {}
-        store.legacy = false;
-      }
+      json = JSON.stringify(payload, jsonReplacer);
     } catch (e) {
-      toast("本地存储已满，头像或表情包图片可能过大");
+      if (!opts.silent) toast("保存失败：数据无法序列化");
+      return false;
     }
+    try {
+      localStorage.setItem(STORAGE_KEY, json);
+    } catch (e) {
+      // 旧版单联系人缓存如果还在，会白占一份空间；v2 已存在时可以安全清掉后重试
+      var retried = false;
+      try {
+        if (localStorage.getItem(STORAGE_KEY) !== null) {
+          localStorage.removeItem(LEGACY_KEY);
+          localStorage.setItem(STORAGE_KEY, json);
+          retried = true;
+        }
+      } catch (e2) {}
+      if (!retried) {
+        if (!opts.silent) toast("本地存储已满：正在尝试压缩本地图片…");
+        compactLater(600);
+        return false;
+      }
+    }
+    if (store.legacy) {
+      try { localStorage.removeItem(LEGACY_KEY); } catch (e3) {}
+      store.legacy = false;
+    }
+    var settingsOverlay = $("settingsOverlay");
+    if (settingsOverlay && !settingsOverlay.hidden) updateStorageInfo();
+    return true;
+  }
+  function storageBytes() {
+    var total = 0;
+    try {
+      for (var i = 0; i < localStorage.length; i++) {
+        var k = localStorage.key(i);
+        if (!k || k.indexOf("starplanner.") !== 0) continue;
+        var v = localStorage.getItem(k) || "";
+        total += (k.length + v.length) * 2;
+      }
+    } catch (e) {}
+    return total;
+  }
+  function fmtBytes(n) {
+    if (n >= 1024 * 1024) return (n / 1024 / 1024).toFixed(2) + " MB";
+    return Math.max(1, Math.round(n / 1024)) + " KB";
+  }
+  function updateStorageInfo() {
+    var box = $("storageInfo");
+    if (!box) return;
+    var n = storageBytes();
+    box.textContent = "当前本地数据约 " + fmtBytes(n) + "（浏览器上限通常约 5 MB；图片会自动压缩）";
+    box.classList.toggle("warn", n > 3.5 * 1024 * 1024);
+  }
+  /* 一次性压缩历史遗留的大图（旧版本以 256/320px PNG/JPEG 保存） */
+  var compactRunning = false;
+  var compactTimer = null;
+  function compactLater(delay) {
+    clearTimeout(compactTimer);
+    compactTimer = setTimeout(compactStoredImages, delay || 500);
+  }
+  function compactStoredImages() {
+    if (compactRunning) return;
+    compactRunning = true;
+    var jobs = [], changed = false;
+    function queueAvatar(avatar, maxSize, minLen) {
+      if (!avatar || avatar.type !== "image" || typeof avatar.value !== "string" || avatar.value.length < minLen) return;
+      var old = avatar.value;
+      jobs.push(shrinkDataUrl(old, maxSize, 0.8, false).then(function (next) {
+        if (next && next.length < old.length && avatar.value === old) { avatar.value = next; changed = true; }
+      }));
+    }
+    function queueStickerArray(arr) {
+      (arr || []).forEach(function (s) {
+        if (!s || typeof s.src !== "string" || s.src.length < 80000) return;
+        var old = s.src;
+        jobs.push(shrinkDataUrl(old, 160, 0.78, true).then(function (next) {
+          if (next && next.length < old.length && s.src === old) { s.src = next; changed = true; }
+        }));
+      });
+    }
+    queueAvatar(store.shared.user && store.shared.user.avatar, 192, 60000);
+    // 历史消息里内嵌的表情包：能对上图库的改为引用，剩下的压缩副本
+    store.contacts.forEach(function (c) {
+      (c.messages || []).forEach(function (m) {
+        if (!m || typeof m.sticker !== "string" || !m.sticker) return;
+        if (!m.stickerId) {
+          var pool = (c.stickers || []).concat(store.shared.stickers || []);
+          var found = pool.filter(function (s) { return s.src === m.sticker; })[0];
+          if (found) { m.stickerId = found.id; m.sticker = ""; changed = true; return; }
+        }
+        if (m.sticker.length < 80000) return;
+        var oldMsg = m.sticker;
+        jobs.push(shrinkDataUrl(oldMsg, 160, 0.78, true).then(function (next) {
+          if (next && next.length < oldMsg.length && m.sticker === oldMsg) { m.sticker = next; changed = true; }
+        }));
+      });
+    });
+    queueStickerArray(store.shared.stickers);
+    store.contacts.forEach(function (c) { queueStickerArray(c.stickers); });
+    store.contacts.forEach(function (c) {
+      queueAvatar(c.companion && c.companion.avatar, 192, 60000);
+      if (c.settings && typeof c.settings.bgImage === "string" && c.settings.bgImage.length > 300000) {
+        var oldBg = c.settings.bgImage;
+        jobs.push(shrinkDataUrl(oldBg, 1280, 0.78, false).then(function (next) {
+          if (next && next.length < oldBg.length && c.settings.bgImage === oldBg) { c.settings.bgImage = next; changed = true; }
+        }));
+      }
+    });
+    if (!jobs.length) { compactRunning = false; return; }
+    Promise.all(jobs).then(function () {
+      compactRunning = false;
+      if (!changed) return;
+      var ok = save({ silent: true });
+      renderStickerGrid();
+      if (!$("cardsOverlay").hidden && activeLibTab === "sticker") renderLibBody();
+      updateCompanionUI();
+      applyBackground();
+      renderAllMessages();
+      revealLatest();
+      if (ok) toast("已自动压缩本地图片，释放存储空间 ✅");
+      else toast("图片已压缩，但本地存储仍然不足，请删除部分表情包");
+    });
   }
 
   /* ---------------- 工具 ---------------- */
@@ -446,6 +572,37 @@
     return (d.getMonth() + 1) + "月" + d.getDate() + "日 · 周" + "日一二三四五六"[d.getDay()];
   }
   function fill(text, map) { return String(text || "").replace(/\{(\w+)\}/g, function (_, k) { return map[k] != null ? map[k] : ""; }); }
+  /* ---------------- 计划提醒 / 陪伴回复模板（A=计划名，B=时间） ---------------- */
+  function fillPlanTemplate(text, planName, timeText) {
+    return String(text == null ? "" : text).replace(/[AB]/g, function (m) {
+      return m === "A" ? (planName || "") : (timeText || "");
+    });
+  }
+  function templateKeyForSub(sub) {
+    if (sub === "接受陪伴") return "togetherAccept";
+    if (sub === "拒绝陪伴") return "togetherReject";
+    return "remind";
+  }
+  function pickPlanTemplate(key) {
+    var arr = ((state.cardLib && state.cardLib[key]) || []).filter(function (s) {
+      return typeof s === "string" && s.trim();
+    });
+    return arr.length ? pick(arr) : "";
+  }
+  function planTimeText(plan) {
+    return plan && plan.due ? fmtDue(plan.due) : "";
+  }
+  function planReminderText(plan, overdue) {
+    var tmpl = pickPlanTemplate("remind");
+    if (!tmpl) tmpl = overdue ? "「A」已经过期啦，记得处理一下。" : "提醒一下，「A」该做啦～";
+    return fillPlanTemplate(tmpl, plan ? plan.title : "计划", planTimeText(plan));
+  }
+  function togetherReplyText(kind, plan, startMin, endMin) {
+    var key = kind === "reject" ? "togetherReject" : "togetherAccept";
+    var tmpl = pickPlanTemplate(key);
+    if (!tmpl) tmpl = kind === "reject" ? "今天不太想安排这个，改天陪你完成「A」好不好？" : "好呀，B，陪你一起完成「A」～";
+    return fillPlanTemplate(tmpl, plan ? plan.title : "计划", minToStr(startMin) + "到" + minToStr(endMin));
+  }
 
   /* ---------------- 字卡池（含默认开关 + 用户自定义） ---------------- */
   function useDefault() { return state.reply.useDefaultCards === 1; }
@@ -649,6 +806,7 @@
     var sb = $("sidebar");
     if (sb) sb.classList.remove("open");
     renderContactList();
+    updateLibShareToggle();
     $("contactScreen").hidden = false;
   }
   function enterApp(id) {
@@ -738,10 +896,17 @@
     if (contactDraft.id) {
       var c = contactById(contactDraft.id);
       if (!c) return;
+      var prev = { name: c.companion.name, term: c.companion.term, avatar: c.companion.avatar };
       c.companion.name = name;
       c.companion.term = term;
       c.companion.avatar = avatar;
-      save();
+      if (!save({ silent: true })) {
+        c.companion.name = prev.name;
+        c.companion.term = prev.term;
+        c.companion.avatar = prev.avatar;
+        toast("保存失败：本地存储已满，请先删掉一些表情包或背景图");
+        return;
+      }
       $("contactEditOverlay").hidden = true;
       if (store.activeId === c.id) refreshActiveUI();
       renderContactList();
@@ -750,8 +915,17 @@
       var fresh = defaultContact();
       fresh.companion = { name: name, term: term, avatar: avatar };
       fresh.settings = JSON.parse(JSON.stringify(state.settings));
+      if (state.cardLibShared === false) {
+        fresh.cardLib = cloneJson(state.cardLib);
+        fresh.stickers = cloneJson(state.stickers);
+        fresh.libOwned = true;
+      }
       store.contacts.push(fresh);
-      save();
+      if (!save({ silent: true })) {
+        store.contacts = store.contacts.filter(function (x) { return x.id !== fresh.id; });
+        toast("保存失败：本地存储已满，请先删掉一些表情包或背景图");
+        return;
+      }
       $("contactEditOverlay").hidden = true;
       toast("已新建联系人「" + name + "」");
       enterApp(fresh.id);
@@ -775,10 +949,103 @@
     toast("联系人已删除");
   }
 
+  /* ---------------- 字卡库共享模式 ---------------- */
+  function ensurePrivateLibs() {
+    if (store.shared.cardLibShared !== false) return;
+    var srcLib = cloneJson(store.shared.cardLib || defaultCardLib());
+    var srcStickers = cloneJson(store.shared.stickers || []);
+    store.contacts.forEach(function (c) {
+      if (!c.libOwned) {
+        c.cardLib = cloneJson(srcLib);
+        c.stickers = cloneJson(srcStickers);
+        c.libOwned = true;
+      }
+    });
+  }
+  function updateLibShareToggle() {
+    var btn = $("libShareToggle");
+    if (!btn) return;
+    var shared = state.cardLibShared !== false;
+    btn.classList.toggle("on", shared);
+    btn.setAttribute("aria-pressed", shared ? "true" : "false");
+    btn.title = shared ? "字卡库：所有联系人共享（点击改为各自独立）" : "字卡库：每位联系人独立（点击改为共享；表情包会各存一份）";
+    var st = btn.querySelector(".lib-share-state");
+    if (st) st.textContent = shared ? "共享" : "独立";
+    var foot = $("contactFoot");
+    if (foot) foot.textContent = shared ? "回复设置 · 字卡库 · 周日历 · 计划 在所有联系人之间共享" : "回复设置 · 周日历 · 计划 共享 · 字卡库各自独立";
+  }
+  function setCardLibShared(shared) {
+    shared = !!shared;
+    if ((state.cardLibShared !== false) === shared) return;
+    var backup = JSON.stringify({ shared: store.shared, contacts: store.contacts }, jsonReplacer);
+    if (!shared) {
+      // 共享 → 独立：还没有独立库的联系人先复制当前共享库
+      var srcLib = cloneJson(store.shared.cardLib || defaultCardLib());
+      var srcStickers = cloneJson(store.shared.stickers || []);
+      store.contacts.forEach(function (c) {
+        if (!c.libOwned) {
+          c.cardLib = cloneJson(srcLib);
+          c.stickers = cloneJson(srcStickers);
+          c.libOwned = true;
+        }
+      });
+      store.shared.cardLibShared = false;
+      state.cardLibShared = false;
+      loadActiveIntoState();
+    } else {
+      // 独立 → 共享：以当前联系人的字卡库作为共享库，其他联系人的独立库保留
+      store.shared.cardLib = cloneJson(state.cardLib || defaultCardLib());
+      store.shared.stickers = cloneJson(state.stickers || []);
+      store.shared.cardLibShared = true;
+      state.cardLibShared = true;
+      state.cardLib = store.shared.cardLib;
+      state.stickers = store.shared.stickers;
+    }
+    if (!save({ silent: true })) {
+      var bk = JSON.parse(backup);
+      store.shared = bk.shared;
+      store.contacts = bk.contacts;
+      reloadStateFromStore();
+      updateLibShareToggle();
+      renderStickerGrid();
+      refreshActiveUI();
+      toast("切换失败：本地存储已满，请先删掉一些表情包");
+      return;
+    }
+    updateLibShareToggle();
+    renderStickerGrid();
+    if (!$("cardsOverlay").hidden) { renderLibTabs(); renderLibBody(); }
+    toast(shared ? "字卡库已设为共享（以当前联系人的库为准）✅" : "字卡库已设为各自独立（表情包也会各存一份）");
+  }
+
   /* ---------------- 消息渲染 ---------------- */
+  function stickerById(id) {
+    if (!id) return null;
+    return (state.stickers || []).filter(function (s) { return s.id === id; })[0] || null;
+  }
+  function stickerInStore(id) {
+    if (!id) return null;
+    var s = stickerById(id);
+    if (s) return s;
+    s = (store.shared.stickers || []).filter(function (x) { return x.id === id; })[0];
+    if (s) return s;
+    for (var i = 0; i < store.contacts.length; i++) {
+      s = (store.contacts[i].stickers || []).filter(function (x) { return x.id === id; })[0];
+      if (s) return s;
+    }
+    return null;
+  }
+  function messageStickerSrc(msg) {
+    if (!msg) return "";
+    if (msg.stickerId) {
+      var s = stickerInStore(msg.stickerId);
+      if (s) return s.src || "";
+    }
+    return msg.sticker || "";
+  }
   function addMessage(role, text, kind, opts) {
     opts = opts || {};
-    var msg = { id: uid(), role: role, text: text || "", time: Date.now(), kind: kind || "", sticker: opts.sticker || null };
+    var msg = { id: uid(), role: role, text: text || "", time: Date.now(), kind: kind || "", sticker: opts.stickerId ? "" : (opts.sticker || ""), stickerId: opts.stickerId || "" };
     state.messages.push(msg);
     state.lastChatAt = msg.time;
     if (state.messages.length > 500) state.messages = state.messages.slice(-500);
@@ -803,7 +1070,8 @@
     }
     var cls = "card bubble from-" + msg.role;
     if (msg.kind && KIND_LABEL[msg.kind]) cls += " kind-" + msg.kind;
-    if (msg.sticker) {
+    var stickerSrc = messageStickerSrc(msg);
+    if (stickerSrc) {
       cls += " sticker-message";
       if (msg.text && msg.text.trim()) cls += " has-text";
     }
@@ -822,9 +1090,9 @@
     card.appendChild(head);
     var body = el("div", "card-body", msg.text);
     card.appendChild(body);
-    if (msg.sticker) {
+    if (stickerSrc) {
       var simg = el("img", "card-sticker");
-      simg.src = msg.sticker;
+      simg.src = stickerSrc;
       body.appendChild(simg);
     }
     card.dataset.mid = msg.id;
@@ -1151,6 +1419,7 @@
     $("themeColorVal").textContent = state.settings.themeColor || "#8b9a7b";
     $("customCssTa").value = state.settings.customCss;
     $("chatCssTa").value = state.settings.chatCss;
+    updateStorageInfo();
     $("settingsOverlay").hidden = false;
   }
   function renderEmojiGrid() {
@@ -1159,7 +1428,23 @@
     EMOJI_AVATARS.forEach(function (e) {
       var b = el("button", "emoji-opt" + (e === emojiSel ? " active" : ""), e);
       b.type = "button";
-      b.addEventListener("click", function () { emojiSel = e; renderEmojiGrid(); });
+      b.addEventListener("click", function () {
+        var old = state.companion.avatar;
+        emojiSel = e;
+        state.companion.avatar = { type: "emoji", value: e };
+        renderEmojiGrid();
+        updateCompanionUI();
+        renderAllMessages();
+        if (!save({ silent: true })) {
+          state.companion.avatar = old;
+          emojiSel = old.type === "emoji" ? old.value : "";
+          persistActiveContact();
+          renderEmojiGrid();
+          updateCompanionUI();
+          renderAllMessages();
+          toast("保存失败：本地存储已满");
+        }
+      });
       grid.appendChild(b);
     });
   }
@@ -1169,7 +1454,21 @@
     EMOJI_AVATARS.forEach(function (e) {
       var b = el("button", "emoji-opt" + (e === userEmojiSel ? " active" : ""), e);
       b.type = "button";
-      b.addEventListener("click", function () { userEmojiSel = e; renderUserEmojiGrid(); });
+      b.addEventListener("click", function () {
+        var old = state.user.avatar;
+        userEmojiSel = e;
+        state.user.avatar = { type: "emoji", value: e };
+        renderUserEmojiGrid();
+        renderAllMessages();
+        if (!save({ silent: true })) {
+          state.user.avatar = old;
+          userEmojiSel = old.type === "emoji" ? old.value : "";
+          persistActiveContact();
+          renderUserEmojiGrid();
+          renderAllMessages();
+          toast("保存失败：本地存储已满");
+        }
+      });
       grid.appendChild(b);
     });
   }
@@ -1195,7 +1494,10 @@
     renderAllMessages();
     revealLatest();
     if (!$("restMode").hidden) renderRestMessages();
-    save();
+    if (!save({ silent: true })) {
+      toast("保存失败：本地存储已满，请先删掉一些表情包或背景图");
+      return;
+    }
     $("settingsOverlay").hidden = true;
     toast("设置已保存 ✅");
   }
@@ -1265,7 +1567,13 @@
     LIB_TABS.forEach(function (t) {
       var b = el("button", "lib-tab" + (t.key === activeLibTab ? " active" : ""), t.label);
       b.type = "button";
-      b.addEventListener("click", function () { activeLibTab = t.key; activeSubTab = "默认"; libSelected = []; renderLibTabs(); renderLibBody(); });
+      b.addEventListener("click", function () {
+        activeLibTab = t.key;
+        activeSubTab = t.key === "remind" ? "计划提醒" : "默认";
+        libSelected = [];
+        renderLibTabs();
+        renderLibBody();
+      });
       tabs.appendChild(b);
     });
   }
@@ -1275,20 +1583,25 @@
       (state.cardLib.replyGroups || []).forEach(function (g) { gs.push(g.name); });
       return gs;
     }
+    if (cat === "remind") return ["计划提醒", "接受陪伴", "拒绝陪伴"];
     return ["默认", "自定义"];
   }
   function libIsEditable(cat, sub) { return sub !== "默认"; }
   function libSubCards(cat, sub) {
+    if (cat === "remind") return (state.cardLib[templateKeyForSub(sub)] || []).slice();
     if (cat === "reply") {
       if (sub === "默认") return DEFAULT_CARDS.reply.slice();
       var g = (state.cardLib.replyGroups || []).find(function (x) { return x.name === sub; });
       return g ? g.cards.slice() : [];
     }
-    if (sub === "默认") return DEFAULT_CARDS[cat].slice();
+    if (sub === "默认") return (DEFAULT_CARDS[cat] || []).slice();
     return (state.cardLib[cat] || []).slice();
   }
   function libDeleteCard(cat, sub, idx) {
-    if (cat === "reply") {
+    if (cat === "remind") {
+      var key = templateKeyForSub(sub);
+      if (state.cardLib[key]) state.cardLib[key].splice(idx, 1);
+    } else if (cat === "reply") {
       var g = state.cardLib.replyGroups.find(function (x) { return x.name === sub; });
       if (g) g.cards.splice(idx, 1);
     } else {
@@ -1296,13 +1609,19 @@
     }
     save();
   }
+  function libModeHint() {
+    var shared = state.cardLibShared !== false;
+    return el("div", "lib-mode-hint " + (shared ? "shared" : "private"),
+      shared ? "字卡库 · 所有联系人共享" : "字卡库 · 仅当前联系人「" + state.companion.name + "」");
+  }
   function renderLibBody() {
     var box = $("libBody");
     box.innerHTML = "";
+    box.appendChild(libModeHint());
     var cat = activeLibTab;
     if (cat === "sticker") { renderStickerLib(box); return; }
     var subs = libSubGroups(cat);
-    if (subs.indexOf(activeSubTab) < 0) activeSubTab = "默认";
+    if (subs.indexOf(activeSubTab) < 0) activeSubTab = subs[0];
     var sub = activeSubTab;
     var editable = libIsEditable(cat, sub);
     var cards = libSubCards(cat, sub);
@@ -1315,7 +1634,7 @@
     });
     box.appendChild(subtabs);
     var head = el("div", "lib-group-head");
-    head.appendChild(el("span", "lib-group-name", (sub === "默认" ? "默认（内置）" : sub) + " · " + cards.length + " 张"));
+    head.appendChild(el("span", "lib-group-name", (sub === "默认" ? "默认（内置）" : sub) + " · " + cards.length + (cat === "remind" ? " 条" : " 张")));
     if (cat === "reply" && editable) {
       var gdel = el("button", "lib-group-del", "删除分组");
       gdel.type = "button";
@@ -1348,7 +1667,7 @@
         libSelected.slice().sort(function (a, b) { return b - a; }).forEach(function (i) { libDeleteCard(cat, sub, i); });
         libSelected = [];
         renderLibBody();
-        toast("已删除 " + n + " 张字卡");
+        toast("已删除 " + n + (cat === "remind" ? " 条模板" : " 张字卡"));
       });
       bar.appendChild(delBtn);
       box.appendChild(bar);
@@ -1378,13 +1697,27 @@
       list.appendChild(item);
     });
     box.appendChild(list);
-    if (!cards.length) box.appendChild(el("div", "empty", sub === "默认" ? "内置字卡为空" : "该分组下暂无字卡"));
+    if (!cards.length) {
+      var emptyText = cat === "remind"
+        ? (sub === "计划提醒" ? "还没有自定义提醒模板，留空时会使用内置默认提醒。" : "还没有自定义模板，留空时会使用内置默认回复。")
+        : (sub === "默认" ? "内置字卡为空" : "该分组下暂无字卡");
+      box.appendChild(el("div", "empty", emptyText));
+    }
     if (cat === "reply") {
       box.appendChild(libBatchArea(
         "【组名】\n一行一张字卡\n\n例如：\n【晚安】\n晚安，做个好梦\n早点休息哦",
         "「【】」内写组名，下面每一行是一张字卡，自动归入该组；没有组名的行归入「未分组」。",
         batchAddReply
       ));
+    } else if (cat === "remind") {
+      var ph = "一行一条回复模板；A = 计划名，B = 时间。\n\n例如：\n喵喵喵！喵喵A喵喵，喵喵！\n吱吱吱吱，A吱吱！";
+      var hintText = sub === "计划提醒"
+        ? "A = 计划名；B = 截止时间（计划有截止时间时）。留空会使用内置默认提醒。"
+        : "A = 计划名；B = 陪伴时间（HH:MM到HH:MM）。留空会使用内置默认回复。";
+      var area = libBatchArea(ph, hintText, function (v) { batchAddTemplate(templateKeyForSub(sub), v); });
+      var ta = area.querySelector("textarea");
+      if (ta) ta.style.minHeight = "150px";
+      box.appendChild(area);
     } else if (editable) {
       box.appendChild(libBatchArea("一行一张字卡，批量加入", "每一行是一张字卡，自动切分加入。", function (v) { batchAddFlat(cat, v); }));
     } else {
@@ -1466,28 +1799,65 @@
     renderLibBody();
     toast("已加入 " + added + " 张字卡 ✅");
   }
+  function batchAddTemplate(key, text) {
+    if (!state.cardLib[key]) state.cardLib[key] = [];
+    var lines = String(text || "").split("\n");
+    var added = 0;
+    lines.forEach(function (line) {
+      var t = line.trim();
+      if (t) { state.cardLib[key].push(t); added++; }
+    });
+    if (!added) { toast("未识别到回复模板"); return; }
+    save();
+    renderLibBody();
+    toast("已加入 " + added + " 条回复模板 ✅");
+  }
 
-  /* ---------------- 头像上传 ---------------- */
-  function resizeImage(file, maxSize) {
+  /* ---------------- 图片压缩 / 上传 ---------------- */
+  function encodeCanvas(canvas, quality, keepAlpha) {
+    var url = "";
+    try { url = canvas.toDataURL("image/webp", quality); } catch (e) {}
+    if (url && url.indexOf("data:image/webp") === 0) return url;
+    return keepAlpha ? canvas.toDataURL("image/png") : canvas.toDataURL("image/jpeg", quality);
+  }
+  function drawResized(img, maxSize, quality, keepAlpha) {
+    var w = img.width || 1, h = img.height || 1;
+    var scale = Math.min(1, maxSize / Math.max(w, h));
+    var cw = Math.max(1, Math.round(w * scale)), ch = Math.max(1, Math.round(h * scale));
+    var canvas = document.createElement("canvas");
+    canvas.width = cw; canvas.height = ch;
+    var ctx = canvas.getContext("2d");
+    if (ctx.imageSmoothingQuality) ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(img, 0, 0, cw, ch);
+    return encodeCanvas(canvas, quality, keepAlpha);
+  }
+  function resizeImage(file, maxSize, opts) {
+    opts = opts || {};
     return new Promise(function (resolve, reject) {
       var reader = new FileReader();
       reader.onload = function () {
         var img = new Image();
         img.onload = function () {
-          var w = img.width, h = img.height;
-          var scale = Math.min(1, maxSize / Math.max(w, h));
-          var cw = Math.round(w * scale), ch = Math.round(h * scale);
-          var canvas = document.createElement("canvas");
-          canvas.width = cw; canvas.height = ch;
-          var ctx = canvas.getContext("2d");
-          ctx.drawImage(img, 0, 0, cw, ch);
-          resolve(canvas.toDataURL("image/jpeg", 0.85));
+          try { resolve(drawResized(img, maxSize, opts.quality || 0.82, !!opts.keepAlpha)); }
+          catch (e) { reject(e); }
         };
         img.onerror = reject;
         img.src = reader.result;
       };
       reader.onerror = reject;
       reader.readAsDataURL(file);
+    });
+  }
+  function shrinkDataUrl(dataUrl, maxSize, quality, keepAlpha) {
+    return new Promise(function (resolve) {
+      if (typeof dataUrl !== "string" || dataUrl.indexOf("data:image/") !== 0) { resolve(dataUrl); return; }
+      var img = new Image();
+      img.onload = function () {
+        try { resolve(drawResized(img, maxSize, quality, keepAlpha)); }
+        catch (e) { resolve(dataUrl); }
+      };
+      img.onerror = function () { resolve(dataUrl); };
+      img.src = dataUrl;
     });
   }
 
@@ -1515,7 +1885,7 @@
     var text, kind = item.kind;
     if (kind === "urge") {
       var active = activePlans();
-      if (active.length && Math.random() < 0.7) { text = fill(pick(POOL.urge), { plan: pick(active).title, name: c }); }
+      if (active.length && Math.random() < 0.7) { text = planReminderText(pick(active), false); }
       else { text = pickNonBlank(catCards("encourage")) || pick(DEFAULT_CARDS.encourage); kind = "encourage"; }
     } else if (kind === "comfort") {
       text = pickNonBlank(catCards("comfort")) || pick(DEFAULT_CARDS.comfort);
@@ -1533,7 +1903,7 @@
       var lead = due - PLAN_LEAD_HOURS * 3600000;
       if (now.getTime() >= lead) {
         state.planReminders[plan.id] = today;
-        var text = now.getTime() >= due ? fill(pick(POOL.overdue), { plan: plan.title }) : fill(pick(POOL.remind), { plan: plan.title });
+        var text = planReminderText(plan, now.getTime() >= due);
         addMessage("companion", text, "remind");
         pushNotification(state.companion.name + " 提醒你", text);
       }
@@ -1640,9 +2010,9 @@
     var rep = genOneReply();
     var sticker = null;
     if (state.stickers && state.stickers.length && hit(state.reply.stickerProb || 0)) {
-      sticker = pick(state.stickers).src;
+      sticker = pick(state.stickers);
     }
-    var msg = addMessage("companion", rep.text, rep.type === "emoji" ? "" : "", { silent: silent, sticker: sticker });
+    var msg = addMessage("companion", rep.text, rep.type === "emoji" ? "" : "", { silent: silent, stickerId: sticker ? sticker.id : "", sticker: sticker ? sticker.src : "" });
     if (!silent) pushNotification(state.companion.name + " 回复你", rep.text);
     maybeRetract(msg);
   }
@@ -2047,11 +2417,7 @@
   function sendCategoryCard(cat) {
     if (cat === "remind") {
       var active = activePlans();
-      if (active.length) {
-        addMessage("companion", fill(pick(POOL.remind), { plan: pick(active).title }), "remind");
-      } else {
-        addMessage("companion", pickNonBlank(catCards("remind")) || "该喝水啦", "remind");
-      }
+      addMessage("companion", planReminderText(active.length ? pick(active) : null, false), "remind");
     } else if (cat === "encourage") {
       addMessage("companion", pickNonBlank(catCards("encourage")) || "加油", "encourage");
     } else {
@@ -2140,19 +2506,28 @@
     reader.onload = function () {
       try {
         var obj = JSON.parse(reader.result);
+        var saved = false;
         if (obj && Array.isArray(obj.contacts) && obj.contacts.length) {
           importStore(obj);
           reloadStateFromStore();
-          save();
+          saved = save({ silent: true });
         } else {
           importFlat(obj);
-          save();
+          ensurePrivateLibs();
+          saved = save({ silent: true });
           reloadStateFromStore();
         }
         refreshActiveUI();
         renderContactList();
+        updateLibShareToggle();
+        if (!saved) {
+          setTimeout(compactStoredImages, 400);
+          toast("导入完成，但本地存储不足，正在尝试压缩图片…");
+          return;
+        }
         $("settingsOverlay").hidden = true;
         toast("导入成功 ✅");
+        setTimeout(compactStoredImages, 400);
       } catch (e) {
         toast("导入失败：文件格式错误");
       }
@@ -2176,6 +2551,7 @@
     });
     if (obj.activeId && contactExists(store.contacts, obj.activeId)) store.activeId = obj.activeId;
     if (!contactById(store.activeId)) store.activeId = store.contacts[0].id;
+    if (store.shared.cardLibShared === false) ensurePrivateLibs();
   }
   function importFlat(obj) {
     var metaKeys = ["scope", "exportedAt", "app", "version", "contactName", "nickname"];
@@ -2398,46 +2774,51 @@
 
   /* ---------------- 表情包 ---------------- */
   function stickerResize(file, maxSize) {
-    return new Promise(function (resolve, reject) {
-      var reader = new FileReader();
-      reader.onload = function () {
-        var img = new Image();
-        img.onload = function () {
-          var w = img.width, h = img.height;
-          var scale = Math.min(1, maxSize / Math.max(w, h));
-          var cw = Math.max(1, Math.round(w * scale)), ch = Math.max(1, Math.round(h * scale));
-          var canvas = document.createElement("canvas");
-          canvas.width = cw; canvas.height = ch;
-          var ctx = canvas.getContext("2d");
-          ctx.drawImage(img, 0, 0, cw, ch);
-          resolve(canvas.toDataURL("image/png"));
-        };
-        img.onerror = reject;
-        img.src = reader.result;
-      };
-      reader.onerror = reject;
-      reader.readAsDataURL(file);
-    });
+    return resizeImage(file, maxSize || 160, { quality: 0.78, keepAlpha: true });
   }
   function importStickers(files) {
     var list = Array.prototype.slice.call(files || []);
     if (!list.length) return;
-    var total = list.length, done = 0;
+    var total = list.length, done = 0, failed = 0, added = [];
+    function finish() {
+      done++;
+      if (done < total) return;
+      if (!added.length) { toast("图片读取失败，请重试"); return; }
+      if (!save({ silent: true })) {
+        state.stickers = (state.stickers || []).filter(function (s) { return added.indexOf(s) < 0; });
+        persistActiveContact();
+        renderStickerGrid();
+        if (!$("cardsOverlay").hidden && activeLibTab === "sticker") renderLibBody();
+        toast("导入失败：本地存储已满，请先删除一些表情包或背景图");
+        return;
+      }
+      renderStickerGrid();
+      if (!$("cardsOverlay").hidden && activeLibTab === "sticker") renderLibBody();
+      toast("已导入 " + added.length + " 个表情包" + (failed ? "，跳过 " + failed + " 张" : ""));
+    }
     list.forEach(function (f) {
-      stickerResize(f, 256).then(function (dataUrl) {
+      stickerResize(f, 160).then(function (dataUrl) {
+        var item = { id: uid(), src: dataUrl };
         state.stickers = state.stickers || [];
-        state.stickers.push({ id: uid(), src: dataUrl });
-        done++;
-        if (done === total) {
-          save();
-          renderStickerGrid();
-          if (!$("cardsOverlay").hidden && activeLibTab === "sticker") renderLibBody();
-          toast("已导入 " + total + " 个表情包");
-        }
-      }).catch(function () { done++; });
+        state.stickers.push(item);
+        added.push(item);
+        finish();
+      }, function () {
+        failed++;
+        finish();
+      });
     });
   }
   function deleteSticker(id) {
+    var s = (state.stickers || []).filter(function (x) { return x.id === id; })[0];
+    if (s) {
+      // 让已经发出的聊天记录保留图片，避免删库后历史消息变空
+      store.contacts.forEach(function (c) {
+        (c.messages || []).forEach(function (m) {
+          if (m.stickerId === id) { m.sticker = s.src; m.stickerId = ""; }
+        });
+      });
+    }
     state.stickers = state.stickers.filter(function (s) { return s.id !== id; });
     save();
     renderStickerGrid();
@@ -2452,12 +2833,15 @@
     arr.forEach(function (s) {
       var img = el("img", "sticker-option");
       img.src = s.src;
-      img.addEventListener("click", function () { sendSticker(s.src); });
+      img.addEventListener("click", function () { sendSticker(s); });
       grid.appendChild(img);
     });
   }
-  function sendSticker(src) {
-    addMessage("user", "", "", { sticker: src });
+  function sendSticker(st) {
+    if (!st) return;
+    var id = typeof st === "string" ? "" : st.id;
+    var src = typeof st === "string" ? st : st.src;
+    addMessage("user", "", "", { stickerId: id, sticker: src });
     $("stickerPanel").hidden = true;
     scheduleReply();
   }
@@ -2493,6 +2877,7 @@
     $("companionAvatar").addEventListener("click", openSettings);
     $("settingsSave").addEventListener("click", saveSettings);
     $("contactsBtn").addEventListener("click", showContactPicker);
+    $("libShareToggle").addEventListener("click", function () { setCardLibShared(state.cardLibShared === false); });
     $("contactNewBtn").addEventListener("click", function () { openContactEdit(null); });
     $("contactSaveBtn").addEventListener("click", saveContactEdit);
     $("contactDeleteBtn").addEventListener("click", deleteContactFromModal);
@@ -2501,14 +2886,19 @@
       var file = this.files && this.files[0];
       if (!file) return;
       if (!/^image\//.test(file.type)) { toast("请选择图片文件"); return; }
-      resizeImage(file, 320).then(function (dataUrl) {
-        if (!contactDraft) return;
+      $("contactSaveBtn").disabled = true;
+      resizeImage(file, 192, { quality: 0.82 }).then(function (dataUrl) {
+        if (!contactDraft) { $("contactSaveBtn").disabled = false; return; }
         contactDraft.avatar = { type: "image", value: dataUrl };
         contactEmojiSel = "";
         renderContactEmojiGrid();
         renderContactAvatarPreview();
+        $("contactSaveBtn").disabled = false;
         toast("头像已选好，保存后生效");
-      }).catch(function () { toast("图片读取失败，请重试"); });
+      }, function () {
+        $("contactSaveBtn").disabled = false;
+        toast("图片读取失败，请重试");
+      });
       this.value = "";
     });
     $("contactAvatarResetBtn").addEventListener("click", function () {
@@ -2528,17 +2918,38 @@
       var file = this.files && this.files[0];
       if (!file) return;
       if (!/^image\//.test(file.type)) { toast("请选择图片文件"); return; }
-      resizeImage(file, 320).then(function (dataUrl) {
+      var oldAvatar = state.companion.avatar;
+      resizeImage(file, 192, { quality: 0.82 }).then(function (dataUrl) {
         state.companion.avatar = { type: "image", value: dataUrl };
         emojiSel = ""; renderEmojiGrid();
-        toast("头像已更新，保存后生效");
+        updateCompanionUI(); renderAllMessages(); revealLatest();
+        if (!$("restMode").hidden) renderRestMessages();
+        if (!save({ silent: true })) {
+          state.companion.avatar = oldAvatar;
+          emojiSel = oldAvatar.type === "emoji" ? oldAvatar.value : "";
+          persistActiveContact();
+          renderEmojiGrid(); updateCompanionUI(); renderAllMessages();
+          toast("头像保存失败：本地存储已满，请先删掉一些表情包");
+          return;
+        }
+        toast("TA 的头像已保存 ✅");
       }).catch(function () { toast("图片读取失败，请重试"); });
       this.value = "";
     });
     $("avatarResetBtn").addEventListener("click", function () {
+      var oldAvatar = state.companion.avatar;
       state.companion.avatar = { type: "emoji", value: "🐻" };
       emojiSel = "🐻"; renderEmojiGrid();
-      toast("已恢复默认头像，保存后生效");
+      updateCompanionUI(); renderAllMessages();
+      if (!save({ silent: true })) {
+        state.companion.avatar = oldAvatar;
+        emojiSel = oldAvatar.type === "emoji" ? oldAvatar.value : "";
+        persistActiveContact();
+        renderEmojiGrid(); updateCompanionUI(); renderAllMessages();
+        toast("保存失败：本地存储已满");
+        return;
+      }
+      toast("已恢复默认头像 ✅");
     });
 
     $("userAvatarUploadBtn").addEventListener("click", function () { $("userAvatarUpload").click(); });
@@ -2546,24 +2957,45 @@
       var file = this.files && this.files[0];
       if (!file) return;
       if (!/^image\//.test(file.type)) { toast("请选择图片文件"); return; }
-      resizeImage(file, 320).then(function (dataUrl) {
+      var oldAvatar = state.user.avatar;
+      resizeImage(file, 192, { quality: 0.82 }).then(function (dataUrl) {
         state.user.avatar = { type: "image", value: dataUrl };
         userEmojiSel = ""; renderUserEmojiGrid();
-        toast("头像已更新，保存后生效");
+        renderAllMessages(); revealLatest();
+        if (!$("restMode").hidden) renderRestMessages();
+        if (!save({ silent: true })) {
+          state.user.avatar = oldAvatar;
+          userEmojiSel = oldAvatar.type === "emoji" ? oldAvatar.value : "";
+          persistActiveContact();
+          renderUserEmojiGrid(); renderAllMessages();
+          toast("头像保存失败：本地存储已满，请先删掉一些表情包");
+          return;
+        }
+        toast("你的头像已保存 ✅");
       }).catch(function () { toast("图片读取失败，请重试"); });
       this.value = "";
     });
     $("userAvatarResetBtn").addEventListener("click", function () {
+      var oldAvatar = state.user.avatar;
       state.user.avatar = { type: "emoji", value: "😊" };
       userEmojiSel = "😊"; renderUserEmojiGrid();
-      toast("已恢复默认头像，保存后生效");
+      renderAllMessages();
+      if (!save({ silent: true })) {
+        state.user.avatar = oldAvatar;
+        userEmojiSel = oldAvatar.type === "emoji" ? oldAvatar.value : "";
+        persistActiveContact();
+        renderUserEmojiGrid(); renderAllMessages();
+        toast("保存失败：本地存储已满");
+        return;
+      }
+      toast("已恢复默认头像 ✅");
     });
     $("bgUploadBtn").addEventListener("click", function () { $("bgUpload").click(); });
     $("bgUpload").addEventListener("change", function () {
       var file = this.files && this.files[0];
       if (!file) return;
       if (!/^image\//.test(file.type)) { toast("请选择图片文件"); return; }
-      resizeImage(file, 1280).then(function (dataUrl) {
+      resizeImage(file, 1280, { quality: 0.78 }).then(function (dataUrl) {
         state.settings.bgImage = dataUrl;
         applyBackground();
         toast("背景已更新，保存后生效");
@@ -2748,7 +3180,9 @@
     refreshActiveUI();
     updateNotifyBtn();
     renderContactList();
+    updateLibShareToggle();
     $("contactScreen").hidden = false;
+    setTimeout(compactStoredImages, 300);
   }
 
   var timersStarted = false;
@@ -2882,12 +3316,13 @@
     save();
   }
   function scheduleTogether(plan, start, end) {
-    if (!taInActiveWindow(start, end)) { toast("该时段不在活跃时段内，无法一起完成"); return; }
+    if (!taInActiveWindow(start, end)) { toast("该时段不在活跃时段内，无法一起完成"); return false; }
     var conflict = state.ta.events.some(function (e) { return end > e.start && start < e.end; });
-    if (conflict) { toast("该时段已有安排，无法一起完成"); return; }
+    if (conflict) { toast("该时段已有安排，无法一起完成"); return false; }
     state.ta.events.push({ id: uid(), name: "陪" + state.user.name + "一起完成计划-" + plan.title, start: start, end: end, type: "together", planId: plan.id, color: "#9f86c0" });
     save();
     renderMoments();
+    return true;
   }
   function taPlanCheck() {
     var c = state.ta.cfg;
@@ -3139,14 +3574,14 @@
     if (hit(state.ta.cfg.together.refuse)) {
       $("togetherOverlay").hidden = true;
       toast(state.companion.name + " 拒绝了这次安排");
-      addMessage("companion", "今天不太想安排这个，改天陪你完成「" + plan.title + "」好不好？", "comfort");
+      addMessage("companion", togetherReplyText("reject", plan, sm, em), "comfort");
       return;
     }
     var dayStart = new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate()).getTime();
-    scheduleTogether(plan, dayStart + sm * 60000, dayStart + em * 60000);
+    if (!scheduleTogether(plan, dayStart + sm * 60000, dayStart + em * 60000)) return;
     $("togetherOverlay").hidden = true;
     toast("已安排：一起完成「" + plan.title + "」");
-    addMessage("companion", "好呀，" + minToStr(sm) + " 到 " + minToStr(em) + "，陪你一起完成「" + plan.title + "」～", "system");
+    addMessage("companion", togetherReplyText("accept", plan, sm, em), "system");
   }
   function openTASettings() { renderTASettings(); $("taSettingsOverlay").hidden = false; }
   function renderTASettings() {
