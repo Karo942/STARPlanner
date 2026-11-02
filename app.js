@@ -784,7 +784,7 @@
     if (state.messages.length > 500) state.messages = state.messages.slice(-500);
     var prev = state.messages[state.messages.length - 2];
     if (!prev || dateStr(new Date(prev.time)) !== dateStr(new Date(msg.time))) {
-      messagesEl.appendChild(el("div", "card-date", cardDateLabel(msg.time)));
+      messagesEl.appendChild(el("div", "card-date day-label", cardDateLabel(msg.time)));
     }
     var node = renderMessage(msg);
     msg._el = node;
@@ -801,7 +801,13 @@
       var noteText = msg.kind === "read" ? NOTE_TEXT.read : (state.companion.name + " " + NOTE_TEXT[msg.kind]);
       return el("div", "card-note", noteText);
     }
-    var card = el("div", "card from-" + msg.role + (msg.kind && KIND_LABEL[msg.kind] ? " kind-" + msg.kind : ""));
+    var cls = "card bubble from-" + msg.role;
+    if (msg.kind && KIND_LABEL[msg.kind]) cls += " kind-" + msg.kind;
+    if (msg.sticker) {
+      cls += " sticker-message";
+      if (msg.text && msg.text.trim()) cls += " has-text";
+    }
+    var card = el("div", cls);
     var head = el("div", "card-head");
     var sender = el("div", "card-sender");
     var avatar = el("div", "card-avatar");
@@ -811,7 +817,7 @@
     head.appendChild(sender);
     var meta = el("div", "card-meta");
     if (msg.kind && KIND_LABEL[msg.kind]) meta.appendChild(el("span", "card-tag", KIND_LABEL[msg.kind]));
-    meta.appendChild(el("span", "card-time", fmtClock(msg.time)));
+    meta.appendChild(el("span", "card-time ft-time", fmtClock(msg.time)));
     head.appendChild(meta);
     card.appendChild(head);
     var body = el("div", "card-body", msg.text);
@@ -832,7 +838,10 @@
     actions.appendChild(rbtn); actions.appendChild(fbtn); actions.appendChild(dbtn);
     card.appendChild(actions);
     card.addEventListener("click", function () { card.classList.toggle("open"); });
-    return card;
+    var row = el("div", "message" + (msg.role === "user" ? " mine" : " from-companion"));
+    row.dataset.mid = msg.id;
+    row.appendChild(card);
+    return row;
   }
 
   function resayMessage(msg) {
@@ -866,7 +875,7 @@
       return;
     }
     favs.forEach(function (f, i) {
-      var item = el("div", "fav-item");
+      var item = el("div", "fav-item favc-card");
       item.appendChild(el("div", "fav-text", f.text));
       var del = el("button", "fav-del", "🗑");
       del.title = "取消收藏";
@@ -881,7 +890,7 @@
     var lastDay = "";
     state.messages.forEach(function (m) {
       var day = dateStr(new Date(m.time));
-      if (day !== lastDay) { messagesEl.appendChild(el("div", "card-date", cardDateLabel(m.time))); lastDay = day; }
+      if (day !== lastDay) { messagesEl.appendChild(el("div", "card-date day-label", cardDateLabel(m.time))); lastDay = day; }
       var node = renderMessage(m);
       m._el = node;
       messagesEl.appendChild(node);
@@ -898,7 +907,8 @@
 
   function showTyping() {
     removeTyping();
-    var wrap = el("div", "card from-companion typing-card");
+    var row = el("div", "message from-companion");
+    var wrap = el("div", "card bubble typing-card");
     var head = el("div", "card-head");
     var sender = el("div", "card-sender");
     var avatar = el("div", "card-avatar");
@@ -910,13 +920,16 @@
     var body = el("div", "card-body");
     body.innerHTML = '<div class="typing"><span></span><span></span><span></span></div>';
     wrap.appendChild(body);
-    messagesEl.appendChild(wrap);
+    row.appendChild(wrap);
+    messagesEl.appendChild(row);
     revealLatest();
-    return wrap;
+    return row;
   }
   function removeTyping() {
     var t = messagesEl.querySelector(".typing-card");
-    if (t) t.remove();
+    if (!t) return;
+    var row = t.closest ? t.closest(".message") : t.parentNode;
+    (row || t).remove();
   }
 
   function retractMessage(msg) {
@@ -2370,7 +2383,7 @@
       return;
     }
     hist.forEach(function (h) {
-      var item = el("div", "ask-hist-item");
+      var item = el("div", "ask-hist-item ask-card");
       item.appendChild(el("div", "ask-hist-meta", (h.type === "multi" ? "多选题" : "单选题") + " · " + fmtClock(h.askedAt)));
       item.appendChild(el("div", "ask-hist-q", h.question));
       if (h.photo) {

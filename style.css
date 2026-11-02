@@ -547,7 +547,22 @@ button,
   scrollbar-color: var(--line) transparent;
 }
 
+.message {
+  display: flex;
+  align-items: flex-start;
+  width: 100%;
+  min-width: 0;
+}
+
+.message.mine {
+  justify-content: flex-end;
+}
+
 .card-date {
+  align-self: center;
+  width: auto;
+  max-width: 100%;
+  padding: 4px 14px;
   text-align: center;
   font-family: var(--font-head);
   font-weight: 300;
@@ -580,6 +595,8 @@ button,
 }
 
 .card-head {
+  position: relative;
+  z-index: 1;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -649,6 +666,8 @@ button,
 }
 
 .card-body {
+  position: relative;
+  z-index: 1;
   white-space: pre-wrap;
   word-break: break-word;
   font-size: 15px;
@@ -2067,6 +2086,8 @@ input[type="range"] {
 }
 
 .msg-actions {
+  position: relative;
+  z-index: 1;
   display: none;
   justify-content: flex-end;
   gap: 4px;
@@ -3068,7 +3089,7 @@ input[type="range"] {
 
 .ask-hist-q {
   font-size: 13.5px;
-  color: var(--ink);
+  color: inherit;
   word-break: break-word;
 }
 
