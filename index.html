@@ -109,9 +109,16 @@
 
       <div class="composer">
         <div class="quick-replies" id="quickReplies"></div>
+        <div class="sticker-panel" id="stickerPanel" hidden>
+          <div class="sticker-grid" id="stickerGrid"></div>
+          <p class="empty" id="stickerEmpty">还没有表情包，去「回复设置」里导入吧。</p>
+        </div>
         <form class="composer-row" id="composerForm">
-          <button type="button" class="ask-fab" id="askFAB" aria-label="问问TA" title="问问TA">?</button>
-          <input type="text" id="messageInput" class="composer-input" placeholder="" maxlength="500" autocomplete="off" />
+          <div class="composer-field">
+            <button type="button" class="composer-inside" id="askFAB" aria-label="问问TA" title="问问TA">?</button>
+            <input type="text" id="messageInput" class="composer-input" placeholder="" maxlength="500" autocomplete="off" />
+            <button type="button" class="composer-inside" id="stickerBtn" aria-label="表情包" title="表情包">😊</button>
+          </div>
           <button type="button" class="btn ghost together-btn" id="togetherBtn" title="和 TA 一起完成一件事">一起完成吧</button>
           <button type="submit" class="send-btn" id="sendBtn">投递</button>
         </form>
@@ -404,6 +411,15 @@
       </div>
       <p class="hint" style="text-align:left;margin:-6px 0 16px">控制对方回复的节奏、条数与内容比例；下方数值均为概率（%）。</p>
       <div class="reply-fields" id="replySettingsFields"></div>
+      <div class="sticker-manage">
+        <div class="sticker-manage-head">
+          <span>表情包（对方会按概率随文字一起发送；用户可从输入框右侧选择发送）</span>
+          <button class="btn ghost" id="stickerImportBtn" type="button">导入表情包</button>
+          <input type="file" id="stickerImportFile" accept="image/*" multiple hidden />
+        </div>
+        <div class="sticker-manage-list" id="stickerManageList"></div>
+        <p class="empty" id="stickerManageEmpty">还没有表情包。</p>
+      </div>
       <div class="modal-actions">
         <button class="btn ghost" data-close="replySettingsOverlay">取消</button>
         <button class="btn primary" id="replySettingsSave">保存</button>

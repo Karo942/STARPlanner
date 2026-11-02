@@ -147,6 +147,7 @@
     { key: "pyMax", label: "拼接段数 · 最多", min: 2, max: 20 },
     { key: "emojiProb", label: "emoji 出现概率（%）", min: 0, max: 100 },
     { key: "kaomojiProb", label: "颜文字出现概率（%）", min: 0, max: 100 },
+    { key: "stickerProb", label: "表情包随文字发送概率（%）", min: 0, max: 100 },
     { key: "touchProb", label: "拍一拍概率（%）", min: 0, max: 100 },
     { key: "rnProb", label: "只读不回概率（%）", min: 0, max: 100 },
     { key: "cfProb", label: "连接词追加概率（%）", min: 0, max: 100 },
@@ -225,10 +226,11 @@
         rsMin: 1, rsMax: 40, replyMin: 1, replyMax: 2,
         pyEn: 1, pyProb: 50, pyMin: 2, pyMax: 5,
         pyPunctEn: 1, pyPunctSpace: 1, pyPunctDou: 1, pyPunctPer: 1, pyPunctEx: 1, pyPunctQ: 1, pyPunctEl: 1, pyPunctDash: 1, pyPunctNl: 0,
-        emojiProb: 5, kaomojiProb: 5, touchProb: 5, rnProb: 20, cfProb: 20,
+        emojiProb: 5, kaomojiProb: 5, touchProb: 5, rnProb: 20, cfProb: 20, stickerProb: 20,
         rcEn: 1, rcProb: 25, rcRefix: 35,
         asEn: 1, asProb: 30, asMin: 5, asMax: 10, asCountMin: 1, asCountMax: 2
       },
+      stickers: [],
       seen: false
     };
   }
@@ -261,11 +263,14 @@
     return out;
   }
 
+  function jsonReplacer(key, value) {
+    return key === "_el" ? undefined : value;
+  }
   function save() {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state, jsonReplacer));
     } catch (e) {
-      toast("本地存储已满，头像图片可能过大");
+      toast("本地存储已满，头像或表情包图片可能过大");
     }
   }
 
@@ -464,7 +469,7 @@
   /* ---------------- 消息渲染 ---------------- */
   function addMessage(role, text, kind, opts) {
     opts = opts || {};
-    var msg = { id: uid(), role: role, text: text || "", time: Date.now(), kind: kind || "" };
+    var msg = { id: uid(), role: role, text: text || "", time: Date.now(), kind: kind || "", sticker: opts.sticker || null };
     state.messages.push(msg);
     if (state.messages.length > 500) state.messages = state.messages.slice(-500);
     var prev = state.messages[state.messages.length - 2];
@@ -499,7 +504,13 @@
     meta.appendChild(el("span", "card-time", fmtClock(msg.time)));
     head.appendChild(meta);
     card.appendChild(head);
-    card.appendChild(el("div", "card-body", msg.text));
+    var body = el("div", "card-body", msg.text);
+    card.appendChild(body);
+    if (msg.sticker) {
+      var simg = el("img", "card-sticker");
+      simg.src = msg.sticker;
+      body.appendChild(simg);
+    }
     card.dataset.mid = msg.id;
     var actions = el("div", "msg-actions");
     var rbtn = el("button", "msg-act", "🔁"); rbtn.title = "重新让TA说";
@@ -515,8 +526,9 @@
   }
 
   function resayMessage(msg) {
-    if (msg.role === "companion") { addMessage("companion", msg.text); }
-    else { scheduleReply(); }
+    if (msg.role === "user") { scheduleReply(); return; }
+    showTyping();
+    setTimeout(function () { replyOnce(); }, 600);
   }
   function favoriteMessage(msg) {
     state.favorites = state.favorites || [];
@@ -855,7 +867,7 @@
   }
 
   /* ---------------- 回复设置弹窗 ---------------- */
-  function openReplySettings() { renderReplySettings(); $("replySettingsOverlay").hidden = false; }
+  function openReplySettings() { renderReplySettings(); renderStickerManage(); $("replySettingsOverlay").hidden = false; }
   function renderReplySettings() {
     var box = $("replySettingsFields");
     box.innerHTML = "";
@@ -1258,7 +1270,11 @@
   function replyOnce(silent) {
     removeTyping();
     var rep = genOneReply();
-    var msg = addMessage("companion", rep.text, rep.type === "emoji" ? "" : "", { silent: silent });
+    var sticker = null;
+    if (state.stickers && state.stickers.length && hit(state.reply.stickerProb || 0)) {
+      sticker = pick(state.stickers).src;
+    }
+    var msg = addMessage("companion", rep.text, rep.type === "emoji" ? "" : "", { silent: silent, sticker: sticker });
     if (!silent) pushNotification(state.companion.name + " 回复你", rep.text);
     maybeRetract(msg);
   }
@@ -1699,7 +1715,7 @@
     var obj = { scope: scope, exportedAt: new Date().toISOString() };
     keys.forEach(function (k) { obj[k] = state[k]; });
     try {
-      var blob = new Blob([JSON.stringify(obj, null, 2)], { type: "application/json" });
+      var blob = new Blob([JSON.stringify(obj, jsonReplacer, 2)], { type: "application/json" });
       var a = document.createElement("a");
       a.href = URL.createObjectURL(blob);
       a.download = "starplanner-" + scope + "-" + dateStr(new Date()) + ".json";
@@ -1717,12 +1733,22 @@
         var obj = JSON.parse(reader.result);
         var keys = Object.keys(obj).filter(function (k) { return k !== "scope" && k !== "exportedAt"; });
         keys.forEach(function (k) {
-          if (obj[k] !== undefined) state[k] = mergeDeep(defaultState()[k], obj[k]);
+          if (obj[k] === undefined) return;
+          var def = defaultState()[k];
+          if (Array.isArray(def)) {
+            state[k] = JSON.parse(JSON.stringify(obj[k]));
+          } else if (def && typeof def === "object") {
+            state[k] = mergeDeep(def, obj[k]);
+          } else {
+            state[k] = obj[k];
+          }
         });
         save();
-        applyTheme(); applyBackground(); applyGlass(); applyRadius(); applyCustomCss(); applyChatCss();
+        applyTheme(); applyBackground(); applyGlass(); applyRadius(); applyCustomCss(); applyChatCss(); applyFontScale();
         updateCompanionUI();
-        renderPlans(); renderAnniversaries(); renderAllMessages(); renderWeek(); renderMoments();
+        renderQuickReplies();
+        renderPlans(); renderAnniversaries(); renderFavorites(); renderAllMessages(); renderWeek(); renderMoments();
+        revealLatest();
         toast("导入成功");
       } catch (e) {
         toast("导入失败：文件格式错误");
@@ -1871,7 +1897,13 @@
   function taPickChoice(q) {
     var opts = q.options.slice();
     var pick = [];
-    var count = q.type === "multi" ? (q.maxPick || 1) : 1;
+    var count;
+    if (q.type === "multi") {
+      var max = Math.max(1, Math.min(q.maxPick || 2, opts.length));
+      count = max >= 2 ? randInt(2, max) : max;
+    } else {
+      count = 1;
+    }
     for (var i = 0; i < count && opts.length; i++) {
       pick.push(opts.splice(Math.floor(Math.random() * opts.length), 1)[0]);
     }
@@ -1904,6 +1936,90 @@
       if (h.choice && h.choice.length) item.appendChild(el("div", "ask-hist-choice", "TA 的选择：" + h.choice.join("、")));
       list.appendChild(item);
     });
+  }
+
+  /* ---------------- 表情包 ---------------- */
+  function stickerResize(file, maxSize) {
+    return new Promise(function (resolve, reject) {
+      var reader = new FileReader();
+      reader.onload = function () {
+        var img = new Image();
+        img.onload = function () {
+          var w = img.width, h = img.height;
+          var scale = Math.min(1, maxSize / Math.max(w, h));
+          var cw = Math.max(1, Math.round(w * scale)), ch = Math.max(1, Math.round(h * scale));
+          var canvas = document.createElement("canvas");
+          canvas.width = cw; canvas.height = ch;
+          var ctx = canvas.getContext("2d");
+          ctx.drawImage(img, 0, 0, cw, ch);
+          resolve(canvas.toDataURL("image/png"));
+        };
+        img.onerror = reject;
+        img.src = reader.result;
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  }
+  function importStickers(files) {
+    var list = Array.prototype.slice.call(files || []);
+    if (!list.length) return;
+    var total = list.length, done = 0;
+    list.forEach(function (f) {
+      stickerResize(f, 256).then(function (dataUrl) {
+        state.stickers = state.stickers || [];
+        state.stickers.push({ id: uid(), src: dataUrl });
+        done++;
+        if (done === total) { save(); renderStickerManage(); renderStickerGrid(); toast("已导入 " + total + " 个表情包"); }
+      }).catch(function () { done++; });
+    });
+  }
+  function deleteSticker(id) {
+    state.stickers = state.stickers.filter(function (s) { return s.id !== id; });
+    save();
+    renderStickerManage();
+    renderStickerGrid();
+  }
+  function renderStickerManage() {
+    var list = $("stickerManageList");
+    if (!list) return;
+    list.innerHTML = "";
+    var arr = state.stickers || [];
+    $("stickerManageEmpty").hidden = arr.length > 0;
+    arr.forEach(function (s) {
+      var item = el("div", "sticker-manage-item");
+      var img = el("img", "sticker-thumb");
+      img.src = s.src;
+      item.appendChild(img);
+      var del = el("button", "sticker-del", "🗑");
+      del.type = "button";
+      del.title = "删除";
+      del.addEventListener("click", function () { deleteSticker(s.id); });
+      item.appendChild(del);
+      list.appendChild(item);
+    });
+  }
+  function renderStickerGrid() {
+    var grid = $("stickerGrid");
+    if (!grid) return;
+    grid.innerHTML = "";
+    var arr = state.stickers || [];
+    $("stickerEmpty").hidden = arr.length > 0;
+    arr.forEach(function (s) {
+      var img = el("img", "sticker-option");
+      img.src = s.src;
+      img.addEventListener("click", function () { sendSticker(s.src); });
+      grid.appendChild(img);
+    });
+  }
+  function sendSticker(src) {
+    addMessage("user", "", "", { sticker: src });
+    $("stickerPanel").hidden = true;
+  }
+  function toggleStickerPanel() {
+    var p = $("stickerPanel");
+    p.hidden = !p.hidden;
+    if (!p.hidden) renderStickerGrid();
   }
 
   /* ---------------- 事件绑定 ---------------- */
@@ -2055,6 +2171,9 @@
     $("restRippleToggle").addEventListener("click", function () { state.rest.ripple = !state.rest.ripple; save(); applyRestTheme(); });
 
     $("askFAB").addEventListener("click", openAskTA);
+    $("stickerBtn").addEventListener("click", toggleStickerPanel);
+    $("stickerImportBtn").addEventListener("click", function () { $("stickerImportFile").click(); });
+    $("stickerImportFile").addEventListener("change", function () { importStickers(this.files); this.value = ""; });
     $("askTabSingle").addEventListener("click", function () { askSetType("single"); });
     $("askTabMulti").addEventListener("click", function () { askSetType("multi"); });
     $("askTimeRandom").addEventListener("click", function () { askSetTimeMode("random"); });
