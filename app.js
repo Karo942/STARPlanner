@@ -165,7 +165,7 @@
   /* ---------------- 状态 ---------------- */
   function defaultState() {
     return {
-      companion: { name: "星野", avatar: { type: "emoji", value: "🐻" }, slogan: "你的私人计划搭子" },
+      companion: { name: "星野", avatar: { type: "emoji", value: "🐻" }, term: "私人计划搭子" },
       user: { name: "我", avatar: { type: "emoji", value: "😊" } },
       plans: [],
       messages: [],
@@ -460,7 +460,7 @@
   function updateCompanionUI() {
     var c = state.companion;
     $("companionName").textContent = c.name;
-    $("companionSlogan").textContent = c.slogan;
+    $("companionSlogan").textContent = "你的" + (c.term || "私人计划搭子");
     $("headerName").textContent = c.name;
     renderAvatar($("companionAvatarInner"), c.avatar);
     renderAvatar($("headerAvatar"), c.avatar);
@@ -549,7 +549,11 @@
     if (!list) return;
     list.innerHTML = "";
     var favs = state.favorites || [];
-    $("favEmpty").hidden = favs.length > 0;
+    $("favEmpty").hidden = true;
+    if (!favs.length) {
+      list.appendChild(el("div", "fav-empty-hint", "收藏的消息会出现在这里"));
+      return;
+    }
     favs.forEach(function (f, i) {
       var item = el("div", "fav-item");
       item.appendChild(el("div", "fav-text", f.text));
@@ -799,6 +803,7 @@
   var freqSel = state.settings.frequency;
   function openSettings() {
     $("companionNameInput").value = state.companion.name;
+    $("companionTermInput").value = state.companion.term || "私人计划搭子";
     emojiSel = state.companion.avatar.type === "emoji" ? state.companion.avatar.value : "";
     $("userNameInput").value = state.user.name;
     userEmojiSel = state.user.avatar.type === "emoji" ? state.user.avatar.value : "😊";
@@ -850,6 +855,8 @@
   function saveSettings() {
     var name = $("companionNameInput").value.trim();
     if (name) state.companion.name = name;
+    var term = $("companionTermInput").value.trim();
+    if (term) state.companion.term = term;
     if (emojiSel) state.companion.avatar = { type: "emoji", value: emojiSel };
     var uname = $("userNameInput").value.trim();
     if (uname) state.user.name = uname;
@@ -2015,6 +2022,7 @@
   function sendSticker(src) {
     addMessage("user", "", "", { sticker: src });
     $("stickerPanel").hidden = true;
+    scheduleReply();
   }
   function toggleStickerPanel() {
     var p = $("stickerPanel");
@@ -2174,6 +2182,14 @@
     $("stickerBtn").addEventListener("click", toggleStickerPanel);
     $("stickerImportBtn").addEventListener("click", function () { $("stickerImportFile").click(); });
     $("stickerImportFile").addEventListener("change", function () { importStickers(this.files); this.value = ""; });
+    document.addEventListener("click", function (e) {
+      var panel = $("stickerPanel");
+      var btn = $("stickerBtn");
+      if (!panel || panel.hidden) return;
+      if (btn && btn.contains && btn.contains(e.target)) return;
+      if (panel.contains && panel.contains(e.target)) return;
+      panel.hidden = true;
+    });
     $("askTabSingle").addEventListener("click", function () { askSetType("single"); });
     $("askTabMulti").addEventListener("click", function () { askSetType("multi"); });
     $("askTimeRandom").addEventListener("click", function () { askSetTimeMode("random"); });
