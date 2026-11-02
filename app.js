@@ -1,15 +1,17 @@
 /* =========================================================
    STARPlanner · 应用逻辑
    字卡传讯式的计划伙伴（回复引擎移植自 Mochi 源码逻辑）：
+   · 多联系人：开屏选择 + 每人独立的时刻/纪念日/收藏/总设置
    · 回复＝随机抽取 + 多段拼接（概率/条数/emoji/颜文字/拍一拍/已读）
    · 对方随机主动发消息（概率/间隔/条数/撤回）
-   · 字卡库：回复/颜文字/emoji/计划提醒/鼓励/安慰 六分区 + 回复分组 + 批量加入
+   · 字卡库：回复/颜文字/emoji/计划提醒/鼓励/安慰/想法/表情包 八分区 + 回复分组 + 批量加入
    · 陪伴番茄钟 · 自定义纪念日 · 周日历
    ========================================================= */
 (function () {
   "use strict";
 
-  var STORAGE_KEY = "starplanner.v1";
+  var STORAGE_KEY = "starplanner.v2";
+  var LEGACY_KEY = "starplanner.v1";
   var EMOJI_AVATARS = [
     "🐻", "🐱", "🐰", "🦊", "🐼", "🐨", "🐶", "🐹",
     "🦄", "🐯", "🐧", "🦉", "🌟", "🌙", "🍀", "🌸", "🔥", "🎀"
@@ -30,7 +32,8 @@
     { key: "remind", label: "计划提醒" },
     { key: "encourage", label: "鼓励" },
     { key: "comfort", label: "安慰" },
-    { key: "thought", label: "想法" }
+    { key: "thought", label: "想法" },
+    { key: "sticker", label: "表情包" }
   ];
 
   /* ---------------- 默认字卡（预置，源自 Mochi 默认文案 + 我方语料） ---------------- */
@@ -162,90 +165,202 @@
     { key: "asCountMax", label: "主动条数 · 最多", min: 1, max: 10 }
   ];
 
-  /* ---------------- 状态 ---------------- */
-  function defaultState() {
+  /* ---------------- 数据状态（多联系人） ----------------
+     共享：回复设置、字卡库、表情包、周日历（计划）、计划本身
+     私有（每位联系人各一份）：TA 的时刻、纪念日、收藏、总设置、聊天记录、问问TA
+     -------------------------------------------------------- */
+  var CONTACT_FIELDS = ["companion", "messages", "favorites", "anniversaries", "annivGreeted", "askTA", "seen", "schedule", "settings", "ta", "lastChatAt"];
+  var SHARED_FIELDS = ["user", "plans", "customGroups", "planReminders", "rest", "cardLib", "pomodoro", "pomoTimer", "showMoments", "reply", "stickers"];
+
+  function defaultSettings() {
+    return { frequency: "medium", activeStart: "08:00", activeEnd: "23:00", theme: "light", bgImage: "", glassOpacity: 55, radius: 24, customCss: "", bgBrightness: 100, glassBlur: 22, chatCss: "", fontScale: 1, themeColor: "#8b9a7b" };
+  }
+  function defaultCardLib() {
+    return { replyGroups: [], kaomoji: [], emoji: [], remind: [], encourage: [], comfort: [], thought: [] };
+  }
+  function defaultReply() {
     return {
-      companion: { name: "星野", avatar: { type: "emoji", value: "🐻" }, term: "私人计划搭子" },
-      user: { name: "我", avatar: { type: "emoji", value: "😊" } },
-      plans: [],
-      messages: [],
-      settings: { frequency: "medium", activeStart: "08:00", activeEnd: "23:00", theme: "light", bgImage: "", glassOpacity: 55, radius: 24, customCss: "", bgBrightness: 100, glassBlur: 22, chatCss: "", fontScale: 1, themeColor: "#8b9a7b" },
-      schedule: { date: "", items: [] },
-      planReminders: {},
-      anniversaries: [],
-      annivGreeted: {},
-      favorites: [],
-      customGroups: [],
-      askTA: { history: [] },
-      rest: { night: false, ripple: true },
-      cardLib: {
-        replyGroups: [],
-        kaomoji: [],
-        emoji: [],
-        remind: [],
-        encourage: [],
-        comfort: [],
-        thought: []
-      },
-      pomodoro: { focus: 25, short: 5, long: 15, longEvery: 4, today: "", todayCount: 0, total: 0 },
-      pomoTimer: { phase: "focus", running: false, endAt: null, remaining: 1500, started: false, cycleCount: 0 },
-      showMoments: true,
-      ta: {
-        cfg: {
-          wake: ["07:00", "08:30"], sleep: ["23:00", "00:30"],
-          events: [
-            { name: "去公园", min: 60, max: 180, immediate: false, future: true, color: "" },
-            { name: "看书", min: 30, max: 90, immediate: true, future: true, color: "" },
-            { name: "打扫", min: 30, max: 60, immediate: true, future: true, color: "" },
-            { name: "休息", min: 10, max: 30, immediate: true, future: false, color: "" },
-            { name: "打游戏", min: 30, max: 120, immediate: true, future: false, color: "" },
-            { name: "浇花", min: 20, max: 45, immediate: true, future: true, color: "" },
-            { name: "做饭", min: 30, max: 60, immediate: true, future: true, color: "" },
-            { name: "散步", min: 20, max: 50, immediate: true, future: true, color: "" },
-            { name: "发呆", min: 10, max: 30, immediate: true, future: false, color: "" },
-            { name: "午睡", min: 30, max: 90, immediate: true, future: true, color: "" },
-            { name: "听歌", min: 15, max: 45, immediate: true, future: false, color: "" },
-            { name: "洗澡", min: 20, max: 40, immediate: true, future: true, color: "" }
-          ],
-          round1: [10, 40, 30, 13, 5, 2],
-          round2: [45, 35, 5, 5, 5, 5],
-          planCheckMin: 120,
-          sleepDurMin: 480,
-          together: { urgent: 70, important: 50, normal: 30, durMin: 30, durMax: 90, refuse: 20 },
-          mood: { p10: 70, p20: 20, p50: 10 }
-        },
-        events: [],
-        lastTick: 0,
-        lastPlanCheck: 0,
-        dayInit: "",
-        mood: { happy: null, relax: null, miss: null, at: 0 },
-        thought: { text: "", at: 0 }
-      },
-      reply: {
-        useDefaultCards: 1,
-        rsMin: 1, rsMax: 40, replyMin: 1, replyMax: 2,
-        pyEn: 1, pyProb: 50, pyMin: 2, pyMax: 5,
-        pyPunctEn: 1, pyPunctSpace: 1, pyPunctDou: 1, pyPunctPer: 1, pyPunctEx: 1, pyPunctQ: 1, pyPunctEl: 1, pyPunctDash: 1, pyPunctNl: 0,
-        emojiProb: 5, kaomojiProb: 5, touchProb: 5, rnProb: 20, cfProb: 20, stickerProb: 20,
-        rcEn: 1, rcProb: 25, rcRefix: 35,
-        asEn: 1, asProb: 30, asMin: 5, asMax: 10, asCountMin: 1, asCountMax: 2
-      },
-      stickers: [],
-      seen: false
+      useDefaultCards: 1,
+      rsMin: 1, rsMax: 40, replyMin: 1, replyMax: 2,
+      pyEn: 1, pyProb: 50, pyMin: 2, pyMax: 5,
+      pyPunctEn: 1, pyPunctSpace: 1, pyPunctDou: 1, pyPunctPer: 1, pyPunctEx: 1, pyPunctQ: 1, pyPunctEl: 1, pyPunctDash: 1, pyPunctNl: 0,
+      emojiProb: 5, kaomojiProb: 5, touchProb: 5, rnProb: 20, cfProb: 20, stickerProb: 20,
+      rcEn: 1, rcProb: 25, rcRefix: 35,
+      asEn: 1, asProb: 30, asMin: 5, asMax: 10, asCountMin: 1, asCountMax: 2
     };
   }
+  function defaultTA() {
+    return {
+      cfg: {
+        wake: ["07:00", "08:30"], sleep: ["23:00", "00:30"],
+        events: [
+          { name: "去公园", min: 60, max: 180, immediate: false, future: true, color: "" },
+          { name: "看书", min: 30, max: 90, immediate: true, future: true, color: "" },
+          { name: "打扫", min: 30, max: 60, immediate: true, future: true, color: "" },
+          { name: "休息", min: 10, max: 30, immediate: true, future: false, color: "" },
+          { name: "打游戏", min: 30, max: 120, immediate: true, future: false, color: "" },
+          { name: "浇花", min: 20, max: 45, immediate: true, future: true, color: "" },
+          { name: "做饭", min: 30, max: 60, immediate: true, future: true, color: "" },
+          { name: "散步", min: 20, max: 50, immediate: true, future: true, color: "" },
+          { name: "发呆", min: 10, max: 30, immediate: true, future: false, color: "" },
+          { name: "午睡", min: 30, max: 90, immediate: true, future: true, color: "" },
+          { name: "听歌", min: 15, max: 45, immediate: true, future: false, color: "" },
+          { name: "洗澡", min: 20, max: 40, immediate: true, future: true, color: "" }
+        ],
+        round1: [10, 40, 30, 13, 5, 2],
+        round2: [45, 35, 5, 5, 5, 5],
+        planCheckMin: 120,
+        sleepDurMin: 480,
+        together: { urgent: 70, important: 50, normal: 30, durMin: 30, durMax: 90, refuse: 20 },
+        mood: { p10: 70, p20: 20, p50: 10 }
+      },
+      events: [],
+      lastTick: 0,
+      lastPlanCheck: 0,
+      dayInit: "",
+      mood: { happy: null, relax: null, miss: null, at: 0 },
+      thought: { text: "", at: 0 }
+    };
+  }
+  function defaultPomodoro() {
+    return { focus: 25, short: 5, long: 15, longEvery: 4, today: "", todayCount: 0, total: 0 };
+  }
+  function defaultPomoTimer() {
+    return { phase: "focus", running: false, endAt: null, remaining: 1500, started: false, cycleCount: 0 };
+  }
+  function defaultCompanion() {
+    return { name: "星野", avatar: { type: "emoji", value: "🐻" }, term: "私人计划搭子" };
+  }
+  function defaultContact(extra) {
+    var c = {
+      id: uid(),
+      createdAt: Date.now(),
+      lastChatAt: 0,
+      companion: defaultCompanion(),
+      messages: [],
+      favorites: [],
+      anniversaries: [],
+      annivGreeted: {},
+      askTA: { history: [] },
+      seen: false,
+      schedule: { date: "", items: [] },
+      settings: defaultSettings(),
+      ta: defaultTA()
+    };
+    return extra ? mergeDeep(c, extra) : c;
+  }
+  function defaultShared() {
+    return {
+      user: { name: "我", avatar: { type: "emoji", value: "😊" } },
+      plans: [],
+      customGroups: [],
+      planReminders: {},
+      rest: { night: false, ripple: true },
+      cardLib: defaultCardLib(),
+      pomodoro: defaultPomodoro(),
+      pomoTimer: defaultPomoTimer(),
+      showMoments: true,
+      reply: defaultReply(),
+      stickers: []
+    };
+  }
+  function defaultState() {
+    var s = defaultShared();
+    var c = defaultContact();
+    CONTACT_FIELDS.forEach(function (k) { s[k] = c[k]; });
+    return s;
+  }
 
-  var state = load();
+  var store = loadStore();
+  var state = buildState(store, store.activeId);
 
-  function load() {
-    var base = defaultState();
-    try {
-      var raw = localStorage.getItem(STORAGE_KEY);
-      if (!raw) return base;
-      return mergeDeep(base, JSON.parse(raw));
-    } catch (e) {
-      return base;
+  function pickFields(obj, keys) {
+    var out = {};
+    keys.forEach(function (k) { if (obj && obj[k] !== undefined) out[k] = obj[k]; });
+    return out;
+  }
+  function lastMessageAt(messages) {
+    var t = 0;
+    (messages || []).forEach(function (m) { if (m && m.time > t) t = m.time; });
+    return t;
+  }
+  function loadStore() {
+    var out = { activeId: "", contacts: [], shared: defaultShared(), legacy: false };
+    var raw = null;
+    try { raw = localStorage.getItem(STORAGE_KEY); } catch (e) {}
+    if (raw) {
+      try {
+        var obj = JSON.parse(raw);
+        if (obj && Array.isArray(obj.contacts) && obj.contacts.length) {
+          out.shared = mergeDeep(defaultShared(), obj.shared || {});
+          out.contacts = obj.contacts.map(function (c) {
+            var base = defaultContact();
+            var merged = mergeDeep(base, pickFields(c, CONTACT_FIELDS));
+            merged.id = c.id || base.id;
+            merged.createdAt = c.createdAt || base.createdAt;
+            merged.lastChatAt = c.lastChatAt || lastMessageAt(merged.messages);
+            return merged;
+          });
+          out.activeId = (obj.activeId && contactExists(out.contacts, obj.activeId)) ? obj.activeId : out.contacts[0].id;
+          return out;
+        }
+      } catch (e) {}
     }
+    // 从旧版（单联系人）数据迁移
+    var legacyRaw = null;
+    try { legacyRaw = localStorage.getItem(LEGACY_KEY); } catch (e) {}
+    if (legacyRaw) {
+      try {
+        var old = JSON.parse(legacyRaw);
+        out.shared = mergeDeep(defaultShared(), pickFields(old, SHARED_FIELDS));
+        var contact = defaultContact(pickFields(old, CONTACT_FIELDS));
+        contact.lastChatAt = lastMessageAt(contact.messages);
+        out.contacts = [contact];
+        out.activeId = contact.id;
+        out.legacy = true;
+        return out;
+      } catch (e) {}
+    }
+    var first = defaultContact();
+    out.contacts = [first];
+    out.activeId = first.id;
+    return out;
+  }
+  function contactExists(list, id) {
+    return (list || []).some(function (c) { return c.id === id; });
+  }
+  function contactById(id) {
+    return store.contacts.filter(function (c) { return c.id === id; })[0] || null;
+  }
+  function buildState(st, id) {
+    var c = (st.contacts || []).filter(function (x) { return x.id === id; })[0] || st.contacts[0];
+    var s = {};
+    SHARED_FIELDS.forEach(function (k) { s[k] = st.shared[k]; });
+    CONTACT_FIELDS.forEach(function (k) { s[k] = c[k]; });
+    return s;
+  }
+  function loadActiveIntoState() {
+    var c = contactById(store.activeId);
+    if (!c) return;
+    CONTACT_FIELDS.forEach(function (k) { state[k] = c[k]; });
+  }
+  function reloadStateFromStore() {
+    var fresh = buildState(store, store.activeId);
+    SHARED_FIELDS.forEach(function (k) { state[k] = fresh[k]; });
+    CONTACT_FIELDS.forEach(function (k) { state[k] = fresh[k]; });
+  }
+  function activateContact(id) {
+    var c = contactById(id);
+    if (!c) return false;
+    if (store.activeId !== id) {
+      save();
+      store.activeId = id;
+      loadActiveIntoState();
+      chatToken++;
+      removeTyping();
+    }
+    save();
+    return true;
   }
 
   function mergeDeep(base, extra) {
@@ -266,9 +381,21 @@
   function jsonReplacer(key, value) {
     return key === "_el" ? undefined : value;
   }
+  function persistActiveContact() {
+    var c = contactById(store.activeId);
+    if (!c) return;
+    CONTACT_FIELDS.forEach(function (k) { c[k] = state[k]; });
+    SHARED_FIELDS.forEach(function (k) { store.shared[k] = state[k]; });
+  }
   function save() {
+    persistActiveContact();
+    var payload = { version: 2, activeId: store.activeId, shared: store.shared, contacts: store.contacts };
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state, jsonReplacer));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(payload, jsonReplacer));
+      if (store.legacy) {
+        try { localStorage.removeItem(LEGACY_KEY); } catch (e2) {}
+        store.legacy = false;
+      }
     } catch (e) {
       toast("本地存储已满，头像或表情包图片可能过大");
     }
@@ -355,6 +482,7 @@
   var annivEmojiSel = "🎂";
   var weekOffset = 0;
   var lastReplySig = "";
+  var chatToken = 0;
   var activeLibTab = "reply";
   var activeSubTab = "默认";
   var libSelected = [];
@@ -466,11 +594,193 @@
     renderAvatar($("headerAvatar"), c.avatar);
   }
 
+  /* ---------------- 联系人（多联系人 · 独立空间） ---------------- */
+  var contactDraft = null;
+  var contactEmojiSel = "🐻";
+
+  function contactLastChatLabel(ts) {
+    if (!ts) return "还没有聊过";
+    var d = new Date(ts), now = new Date();
+    var time = fmtClock(ts);
+    if (dateStr(d) === dateStr(now)) return "上次聊天 · 今天 " + time;
+    if (dateStr(d) === dateStr(new Date(now.getTime() - 86400000))) return "上次聊天 · 昨天 " + time;
+    if (d.getFullYear() === now.getFullYear()) return "上次聊天 · " + (d.getMonth() + 1) + "月" + d.getDate() + "日 " + time;
+    return "上次聊天 · " + d.getFullYear() + "年" + (d.getMonth() + 1) + "月" + d.getDate() + "日";
+  }
+  function renderContactList() {
+    persistActiveContact();
+    var list = $("contactList");
+    if (!list) return;
+    list.innerHTML = "";
+    store.contacts.forEach(function (c, i) {
+      var card = el("div", "contact-card" + (c.id === store.activeId ? " current" : ""));
+      card.setAttribute("role", "button");
+      card.tabIndex = 0;
+      card.style.animationDelay = (i * 55) + "ms";
+      var av = el("div", "contact-card-avatar");
+      renderAvatar(av, c.companion.avatar);
+      var meta = el("div", "contact-card-meta");
+      meta.appendChild(el("div", "contact-card-name", c.companion.name || "未命名"));
+      meta.appendChild(el("div", "contact-card-term", "你的" + (c.companion.term || "私人计划搭子")));
+      meta.appendChild(el("div", "contact-card-time", contactLastChatLabel(c.lastChatAt)));
+      var edit = el("button", "contact-card-edit", "⋯");
+      edit.type = "button";
+      edit.title = "编辑联系人";
+      edit.addEventListener("click", function (e) {
+        e.stopPropagation();
+        openContactEdit(c.id);
+      });
+      card.appendChild(av);
+      card.appendChild(meta);
+      card.appendChild(edit);
+      card.addEventListener("click", function () { enterApp(c.id); });
+      card.addEventListener("keydown", function (e) {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          enterApp(c.id);
+        }
+      });
+      list.appendChild(card);
+    });
+  }
+  function showContactPicker() {
+    save();
+    document.querySelectorAll(".overlay").forEach(function (o) { o.hidden = true; });
+    var sb = $("sidebar");
+    if (sb) sb.classList.remove("open");
+    renderContactList();
+    $("contactScreen").hidden = false;
+  }
+  function enterApp(id) {
+    if (id) activateContact(id);
+    $("contactScreen").hidden = true;
+    var sb = $("sidebar");
+    if (sb) sb.classList.remove("open");
+    refreshActiveUI();
+    welcomeIfNeeded();
+    startTimers();
+    taTick();
+  }
+  function refreshActiveUI() {
+    applyTheme();
+    applyBackground();
+    applyRadius();
+    applyCustomCss();
+    applyChatCss();
+    applyFontScale();
+    updateCompanionUI();
+    renderQuickReplies();
+    renderPlans();
+    renderAnniversaries();
+    renderFavorites();
+    renderAllMessages();
+    revealLatest();
+    renderFootTip();
+    if (!state.pomoTimer.started && !state.pomoTimer.running) state.pomoTimer.remaining = pomoDuration();
+    syncPomoInputs();
+    renderPomo();
+    renderAskHistory();
+    renderStickerGrid();
+    var appEl = $("app");
+    if (appEl) appEl.classList.toggle("with-moments", !!state.showMoments);
+    renderMoments();
+  }
+  function welcomeIfNeeded() {
+    if (state.seen) return;
+    state.seen = true;
+    var c = state.companion.name;
+    addMessage("companion", "你好呀，我是" + c + " 👋 以后我就是你的计划搭子啦。", "encourage", { silent: true });
+    addMessage("companion", "每天我都会在不定的时候，把字卡投递给你，也会自己主动来找你说话～", "encourage", { silent: true });
+    addMessage("companion", "左侧可以添加计划、置顶纪念日，还能打开周日历、番茄钟和字卡库，我们一起慢慢来。", "system", { silent: true });
+    save();
+  }
+  function openContactEdit(id) {
+    var c = id ? contactById(id) : null;
+    contactDraft = c
+      ? { id: c.id, name: c.companion.name || "", term: c.companion.term || "", avatar: { type: c.companion.avatar.type, value: c.companion.avatar.value } }
+      : { id: "", name: "", term: "私人计划搭子", avatar: { type: "emoji", value: "🐻" } };
+    contactEmojiSel = contactDraft.avatar.type === "emoji" ? contactDraft.avatar.value : "";
+    $("contactEditTitle").textContent = c ? "编辑联系人" : "新建联系人";
+    $("contactNameInput").value = contactDraft.name;
+    $("contactTermInput").value = contactDraft.term;
+    $("contactDeleteBtn").hidden = !c || store.contacts.length <= 1;
+    renderContactEmojiGrid();
+    renderContactAvatarPreview();
+    $("contactEditOverlay").hidden = false;
+    setTimeout(function () { $("contactNameInput").focus(); }, 60);
+  }
+  function renderContactAvatarPreview() {
+    var box = $("contactAvatarPreview");
+    if (!box) return;
+    renderAvatar(box, contactDraft ? contactDraft.avatar : null);
+  }
+  function renderContactEmojiGrid() {
+    var grid = $("contactEmojiGrid");
+    if (!grid) return;
+    grid.innerHTML = "";
+    EMOJI_AVATARS.forEach(function (e) {
+      var b = el("button", "emoji-opt" + (e === contactEmojiSel ? " active" : ""), e);
+      b.type = "button";
+      b.addEventListener("click", function () {
+        contactEmojiSel = e;
+        contactDraft.avatar = { type: "emoji", value: e };
+        renderContactEmojiGrid();
+        renderContactAvatarPreview();
+      });
+      grid.appendChild(b);
+    });
+  }
+  function saveContactEdit() {
+    if (!contactDraft) return;
+    var name = $("contactNameInput").value.trim() || "新的伙伴";
+    var term = $("contactTermInput").value.trim() || "私人计划搭子";
+    var avatar = (contactDraft.avatar && contactDraft.avatar.value) ? contactDraft.avatar : { type: "emoji", value: "🐻" };
+    if (contactDraft.id) {
+      var c = contactById(contactDraft.id);
+      if (!c) return;
+      c.companion.name = name;
+      c.companion.term = term;
+      c.companion.avatar = avatar;
+      save();
+      $("contactEditOverlay").hidden = true;
+      if (store.activeId === c.id) refreshActiveUI();
+      renderContactList();
+      toast("联系人已更新 ✅");
+    } else {
+      var fresh = defaultContact();
+      fresh.companion = { name: name, term: term, avatar: avatar };
+      fresh.settings = JSON.parse(JSON.stringify(state.settings));
+      store.contacts.push(fresh);
+      save();
+      $("contactEditOverlay").hidden = true;
+      toast("已新建联系人「" + name + "」");
+      enterApp(fresh.id);
+    }
+  }
+  function deleteContactFromModal() {
+    if (!contactDraft || !contactDraft.id) return;
+    if (store.contacts.length <= 1) { toast("至少要保留一位联系人"); return; }
+    if (typeof window.confirm === "function" && !window.confirm("确定删除这位联系人及其聊天、纪念日、收藏？此操作不可撤销。")) return;
+    var id = contactDraft.id;
+    var wasActive = store.activeId === id;
+    store.contacts = store.contacts.filter(function (c) { return c.id !== id; });
+    if (wasActive) {
+      store.activeId = store.contacts[0].id;
+      loadActiveIntoState();
+    }
+    save();
+    $("contactEditOverlay").hidden = true;
+    renderContactList();
+    if (wasActive) refreshActiveUI();
+    toast("联系人已删除");
+  }
+
   /* ---------------- 消息渲染 ---------------- */
   function addMessage(role, text, kind, opts) {
     opts = opts || {};
     var msg = { id: uid(), role: role, text: text || "", time: Date.now(), kind: kind || "", sticker: opts.sticker || null };
     state.messages.push(msg);
+    state.lastChatAt = msg.time;
     if (state.messages.length > 500) state.messages = state.messages.slice(-500);
     var prev = state.messages[state.messages.length - 2];
     if (!prev || dateStr(new Date(prev.time)) !== dateStr(new Date(msg.time))) {
@@ -527,8 +837,9 @@
 
   function resayMessage(msg) {
     if (msg.role === "user") { scheduleReply(); return; }
+    var tk = chatToken;
     showTyping();
-    setTimeout(function () { replyOnce(); }, 600);
+    setTimeout(function () { if (tk !== chatToken) return; replyOnce(); }, 600);
   }
   function favoriteMessage(msg) {
     state.favorites = state.favorites || [];
@@ -806,7 +1117,7 @@
     $("companionTermInput").value = state.companion.term || "私人计划搭子";
     emojiSel = state.companion.avatar.type === "emoji" ? state.companion.avatar.value : "";
     $("userNameInput").value = state.user.name;
-    userEmojiSel = state.user.avatar.type === "emoji" ? state.user.avatar.value : "😊";
+    userEmojiSel = state.user.avatar.type === "emoji" ? state.user.avatar.value : "";
     freqSel = state.settings.frequency;
     $("activeStart").value = state.settings.activeStart;
     $("activeEnd").value = state.settings.activeEnd;
@@ -868,13 +1179,16 @@
     if (toMin(state.settings.activeStart) >= toMin(state.settings.activeEnd)) { toast("活跃时段开始需早于结束"); return; }
     updateCompanionUI();
     renderFootTip();
+    renderAllMessages();
+    revealLatest();
+    if (!$("restMode").hidden) renderRestMessages();
     save();
     $("settingsOverlay").hidden = true;
     toast("设置已保存 ✅");
   }
 
   /* ---------------- 回复设置弹窗 ---------------- */
-  function openReplySettings() { renderReplySettings(); renderStickerManage(); $("replySettingsOverlay").hidden = false; }
+  function openReplySettings() { renderReplySettings(); $("replySettingsOverlay").hidden = false; }
   function renderReplySettings() {
     var box = $("replySettingsFields");
     box.innerHTML = "";
@@ -973,6 +1287,7 @@
     var box = $("libBody");
     box.innerHTML = "";
     var cat = activeLibTab;
+    if (cat === "sticker") { renderStickerLib(box); return; }
     var subs = libSubGroups(cat);
     if (subs.indexOf(activeSubTab) < 0) activeSubTab = "默认";
     var sub = activeSubTab;
@@ -1062,6 +1377,33 @@
     } else {
       box.appendChild(libBatchArea("一行一张字卡，批量加入", "当前为内置字卡（不可删除）。请切到「自定义」分组后添加自己的字卡。", function (v) { activeSubTab = "自定义"; batchAddFlat(cat, v); }));
     }
+  }
+  function renderStickerLib(box) {
+    var arr = state.stickers || [];
+    var head = el("div", "lib-group-head");
+    head.appendChild(el("span", "lib-group-name", "表情包 · " + arr.length + " 个"));
+    var imp = el("button", "btn ghost", "导入表情包");
+    imp.type = "button";
+    imp.addEventListener("click", function () { $("stickerImportFile").click(); });
+    head.appendChild(imp);
+    box.appendChild(head);
+    box.appendChild(el("div", "hint lib-hint", "表情包会在 TA 回复时按概率随文字一起发送，也可以从输入框右侧的 😊 选择发送。图片只保存在本地浏览器。"));
+    var grid = el("div", "lib-sticker-grid");
+    arr.forEach(function (s) {
+      var item = el("div", "lib-sticker-item");
+      var img = el("img", "lib-sticker-thumb");
+      img.src = s.src;
+      img.alt = "表情包";
+      item.appendChild(img);
+      var del = el("button", "lib-sticker-del", "×");
+      del.type = "button";
+      del.title = "删除表情包";
+      del.addEventListener("click", function () { deleteSticker(s.id); });
+      item.appendChild(del);
+      grid.appendChild(item);
+    });
+    box.appendChild(grid);
+    if (!arr.length) box.appendChild(el("div", "empty", "还没有表情包，先导入几张吧。"));
   }
   function libBatchArea(placeholder, hintText, onAdd) {
     var wrap = el("div", "lib-editor");
@@ -1254,23 +1596,29 @@
   }
   function scheduleReply() {
     var r = state.reply;
-    if (hit(r.rnProb)) { setTimeout(function () { addMessage("companion", "", "read"); }, randInt(1000, 4000)); return; }
+    var tk = chatToken;
+    if (hit(r.rnProb)) { setTimeout(function () { if (tk !== chatToken) return; addMessage("companion", "", "read"); }, randInt(1000, 4000)); return; }
     var delay = (Math.max(1, Number(r.rsMin) || 1) + Math.random() * Math.max(1, Number(r.rsMax) - Number(r.rsMin))) * 1000;
     showTyping();
     setTimeout(function () {
+      if (tk !== chatToken) { removeTyping(); return; }
       removeTyping();
       if (hit(r.touchProb)) { addMessage("companion", "", "poke"); return; }
-      deliverTurn();
+      deliverTurn(tk);
     }, delay);
   }
-  function deliverTurn() {
+  function deliverTurn(tk) {
     var r = state.reply;
     var rpMin = Math.max(1, Number(r.replyMin) || 1);
     var rpMax = Math.max(rpMin, Number(r.replyMax) || 2);
     var count = (r.pyEn === 1) ? randInt(rpMin, rpMax) : 1;
     for (var i = 0; i < count; i++) {
       (function (i) {
-        setTimeout(function () { if (i < count - 1) showTyping(); replyOnce(i > 0); }, i * randInt(1200, 2800));
+        setTimeout(function () {
+          if (tk !== chatToken) return;
+          if (i < count - 1) showTyping();
+          replyOnce(i > 0);
+        }, i * randInt(1200, 2800));
       })(i);
     }
   }
@@ -1289,11 +1637,17 @@
     var r = state.reply;
     if (!msg || msg.kind === "read" || msg.kind === "poke") return;
     if (r.rcEn !== 1 || !hit(r.rcProb)) return;
+    var tk = chatToken;
     setTimeout(function () {
+      if (tk !== chatToken) return;
       retractMessage(msg);
       if (hit(r.rcRefix)) {
         showTyping();
-        setTimeout(function () { removeTyping(); addMessage("companion", pick(getReplyPool().text) || "…"); }, 600);
+        setTimeout(function () {
+          if (tk !== chatToken) return;
+          removeTyping();
+          addMessage("companion", pick(getReplyPool().text) || "…");
+        }, 600);
       }
     }, randInt(1000, 3000));
   }
@@ -1315,11 +1669,13 @@
     if (r.asEn !== 1) return;
     var prob = r.asProb > 0 ? r.asProb : 30;
     if (!hit(prob)) return;
+    var tk = chatToken;
     if (hit(r.touchProb)) { addMessage("companion", "", "poke"); return; }
     var count = randInt(Math.max(1, Number(r.asCountMin) || 1), Math.max(1, Number(r.asCountMax) || 2));
     for (var i = 0; i < count; i++) {
       (function (i) {
         setTimeout(function () {
+          if (tk !== chatToken) return;
           if (i < count - 1) showTyping();
           removeTyping();
           var am = autoMsg();
@@ -1709,18 +2065,51 @@
   }
 
   /* ---------------- 数据导出 / 导入 ---------------- */
-  var DATA_SCOPES = {
-    all: ["companion", "user", "plans", "messages", "settings", "schedule", "planReminders", "anniversaries", "annivGreeted", "cardLib", "pomodoro", "pomoTimer", "reply", "ta"],
-    chat: ["messages", "cardLib", "reply"],
-    schedule: ["plans", "anniversaries", "annivGreeted", "planReminders", "schedule", "ta"],
-    settings: ["settings", "companion", "user", "reply", "cardLib", "pomodoro", "pomoTimer", "ta"]
-  };
   function scopeLabel(scope) { return { all: "全局", chat: "聊天", schedule: "日程", settings: "设置" }[scope] || scope; }
+  var CONTACT_EXPORT = {
+    chat: ["messages", "favorites", "askTA", "companion", "schedule"],
+    schedule: ["anniversaries", "annivGreeted", "schedule", "ta", "companion"],
+    settings: ["settings", "companion", "askTA"]
+  };
+  var SHARED_EXPORT = {
+    chat: ["cardLib", "stickers", "reply"],
+    schedule: ["plans", "planReminders", "customGroups"],
+    settings: ["user", "reply", "cardLib", "stickers", "pomodoro", "pomoTimer"]
+  };
+  function cloneJson(v) { return JSON.parse(JSON.stringify(v, jsonReplacer)); }
   function exportData() {
     var scope = $("dataScope").value;
-    var keys = DATA_SCOPES[scope] || DATA_SCOPES.all;
-    var obj = { scope: scope, exportedAt: new Date().toISOString() };
-    keys.forEach(function (k) { obj[k] = state[k]; });
+    persistActiveContact();
+    var obj;
+    if (scope === "all") {
+      obj = {
+        app: "STARPlanner",
+        version: 2,
+        scope: scope,
+        exportedAt: new Date().toISOString(),
+        activeId: store.activeId,
+        nicknames: store.contacts.map(function (c) {
+          return { contact: c.companion.name, nickname: c.companion.term || "" };
+        }),
+        askTA: store.contacts.map(function (c) {
+          return {
+            contact: c.companion.name,
+            nickname: c.companion.term || "",
+            history: (c.askTA && c.askTA.history ? c.askTA.history : []).map(function (h) {
+              return { question: h.question, options: h.options, choice: h.choice, type: h.type, askedAt: h.askedAt };
+            })
+          };
+        }),
+        shared: cloneJson(store.shared),
+        contacts: cloneJson(store.contacts)
+      };
+    } else {
+      obj = { app: "STARPlanner", version: 1, scope: scope, exportedAt: new Date().toISOString() };
+      (CONTACT_EXPORT[scope] || []).forEach(function (k) { obj[k] = cloneJson(state[k]); });
+      (SHARED_EXPORT[scope] || []).forEach(function (k) { obj[k] = cloneJson(state[k]); });
+      obj.contactName = state.companion.name;
+      obj.nickname = state.companion.term || "";
+    }
     try {
       var blob = new Blob([JSON.stringify(obj, jsonReplacer, 2)], { type: "application/json" });
       var a = document.createElement("a");
@@ -1738,30 +2127,58 @@
     reader.onload = function () {
       try {
         var obj = JSON.parse(reader.result);
-        var keys = Object.keys(obj).filter(function (k) { return k !== "scope" && k !== "exportedAt"; });
-        keys.forEach(function (k) {
-          if (obj[k] === undefined) return;
-          var def = defaultState()[k];
-          if (Array.isArray(def)) {
-            state[k] = JSON.parse(JSON.stringify(obj[k]));
-          } else if (def && typeof def === "object") {
-            state[k] = mergeDeep(def, obj[k]);
-          } else {
-            state[k] = obj[k];
-          }
-        });
-        save();
-        applyTheme(); applyBackground(); applyGlass(); applyRadius(); applyCustomCss(); applyChatCss(); applyFontScale();
-        updateCompanionUI();
-        renderQuickReplies();
-        renderPlans(); renderAnniversaries(); renderFavorites(); renderAllMessages(); renderWeek(); renderMoments();
-        revealLatest();
-        toast("导入成功");
+        if (obj && Array.isArray(obj.contacts) && obj.contacts.length) {
+          importStore(obj);
+          reloadStateFromStore();
+          save();
+        } else {
+          importFlat(obj);
+          save();
+          reloadStateFromStore();
+        }
+        refreshActiveUI();
+        renderContactList();
+        $("settingsOverlay").hidden = true;
+        toast("导入成功 ✅");
       } catch (e) {
         toast("导入失败：文件格式错误");
       }
     };
     reader.readAsText(file);
+  }
+  function importStore(obj) {
+    var incoming = obj.contacts.map(function (c) {
+      var base = defaultContact();
+      var merged = mergeDeep(base, pickFields(c, CONTACT_FIELDS));
+      merged.id = c.id || base.id;
+      merged.createdAt = c.createdAt || base.createdAt;
+      merged.lastChatAt = c.lastChatAt || lastMessageAt(merged.messages);
+      return merged;
+    });
+    store.shared = mergeDeep(defaultShared(), obj.shared || {});
+    incoming.forEach(function (c) {
+      var idx = -1;
+      store.contacts.forEach(function (x, i) { if (x.id === c.id) idx = i; });
+      if (idx >= 0) store.contacts[idx] = c; else store.contacts.push(c);
+    });
+    if (obj.activeId && contactExists(store.contacts, obj.activeId)) store.activeId = obj.activeId;
+    if (!contactById(store.activeId)) store.activeId = store.contacts[0].id;
+  }
+  function importFlat(obj) {
+    var metaKeys = ["scope", "exportedAt", "app", "version", "contactName", "nickname"];
+    Object.keys(obj).forEach(function (k) {
+      if (metaKeys.indexOf(k) >= 0 || obj[k] === undefined) return;
+      var isPrivate = CONTACT_FIELDS.indexOf(k) >= 0;
+      var isShared = SHARED_FIELDS.indexOf(k) >= 0;
+      if (!isPrivate && !isShared) return;
+      var def = defaultState()[k];
+      if (Array.isArray(def)) state[k] = cloneJson(obj[k]);
+      else if (def && typeof def === "object") state[k] = mergeDeep(def, obj[k]);
+      else state[k] = obj[k];
+    });
+    if (obj.nickname && state.companion) state.companion.term = String(obj.nickname);
+    if (obj.contactName && state.companion) state.companion.name = String(obj.contactName);
+    state.lastChatAt = lastMessageAt(state.messages) || state.lastChatAt || 0;
   }
 
   /* ---------------- 计划预览 ---------------- */
@@ -1835,15 +2252,29 @@
   function deleteData() {
     if (typeof window.confirm === "function" && !window.confirm("确定删除所选数据？此操作不可撤销。")) return;
     var scope = $("deleteScope").value;
+    if (scope === "all") {
+      store.shared = defaultShared();
+      var fresh = defaultContact();
+      store.contacts = [fresh];
+      store.activeId = fresh.id;
+      reloadStateFromStore();
+      save();
+      renderContactList();
+      refreshActiveUI();
+      $("settingsOverlay").hidden = true;
+      toast("已删除全部数据");
+      return;
+    }
     var keys = {
-      all: ["companion", "user", "plans", "messages", "settings", "schedule", "planReminders", "anniversaries", "annivGreeted", "favorites", "cardLib", "pomodoro", "pomoTimer", "reply", "ta", "seen"],
-      chat: ["messages", "favorites", "cardLib", "reply"],
+      chat: ["messages", "favorites", "askTA"],
       schedule: ["plans", "anniversaries", "annivGreeted", "planReminders", "schedule", "ta"]
     }[scope] || [];
-    keys.forEach(function (k) { state[k] = JSON.parse(JSON.stringify(defaultState()[k])); });
+    keys.forEach(function (k) { state[k] = cloneJson(defaultState()[k]); });
+    if (scope === "chat") { state.lastChatAt = 0; state.seen = true; }
     save();
-    updateCompanionUI();
-    renderPlans(); renderAnniversaries(); renderFavorites(); renderAllMessages(); renderWeek(); renderMoments();
+    refreshActiveUI();
+    renderContactList();
+    $("settingsOverlay").hidden = true;
     toast("已删除「" + scopeLabel(scope) + "」数据");
   }
 
@@ -1889,15 +2320,22 @@
       delay = randInt(2, 8);
     }
     var question = { id: uid(), type: askType, question: q, options: opts, maxPick: askType === "multi" ? maxPick : 1, photo: askQuestionPhoto, askedAt: Date.now(), choice: null };
+    var cid = store.activeId;
+    var owner = contactById(cid);
+    if (owner) {
+      owner.askTA.history.unshift(question);
+      if (owner.askTA.history.length > 100) owner.askTA.history = owner.askTA.history.slice(0, 100);
+    }
+    save();
     toast("TA 正在思考…");
     setTimeout(function () {
       question.choice = taPickChoice(question);
-      state.askTA.history.unshift(question);
-      if (state.askTA.history.length > 100) state.askTA.history = state.askTA.history.slice(0, 100);
+      if (store.activeId === cid) {
+        addMessage("companion", "「" + question.question + "」我选：" + question.choice.join("、"), "remind");
+        renderAskHistory();
+        askResetForm();
+      }
       save();
-      addMessage("companion", "「" + question.question + "」我选：" + question.choice.join("、"), "remind");
-      renderAskHistory();
-      askResetForm();
       toast("TA 已回答 ✅");
     }, delay * 1000);
   }
@@ -1977,34 +2415,20 @@
         state.stickers = state.stickers || [];
         state.stickers.push({ id: uid(), src: dataUrl });
         done++;
-        if (done === total) { save(); renderStickerManage(); renderStickerGrid(); toast("已导入 " + total + " 个表情包"); }
+        if (done === total) {
+          save();
+          renderStickerGrid();
+          if (!$("cardsOverlay").hidden && activeLibTab === "sticker") renderLibBody();
+          toast("已导入 " + total + " 个表情包");
+        }
       }).catch(function () { done++; });
     });
   }
   function deleteSticker(id) {
     state.stickers = state.stickers.filter(function (s) { return s.id !== id; });
     save();
-    renderStickerManage();
     renderStickerGrid();
-  }
-  function renderStickerManage() {
-    var list = $("stickerManageList");
-    if (!list) return;
-    list.innerHTML = "";
-    var arr = state.stickers || [];
-    $("stickerManageEmpty").hidden = arr.length > 0;
-    arr.forEach(function (s) {
-      var item = el("div", "sticker-manage-item");
-      var img = el("img", "sticker-thumb");
-      img.src = s.src;
-      item.appendChild(img);
-      var del = el("button", "sticker-del", "🗑");
-      del.type = "button";
-      del.title = "删除";
-      del.addEventListener("click", function () { deleteSticker(s.id); });
-      item.appendChild(del);
-      list.appendChild(item);
-    });
+    if (!$("cardsOverlay").hidden && activeLibTab === "sticker") renderLibBody();
   }
   function renderStickerGrid() {
     var grid = $("stickerGrid");
@@ -2055,6 +2479,33 @@
     $("openSettings").addEventListener("click", openSettings);
     $("companionAvatar").addEventListener("click", openSettings);
     $("settingsSave").addEventListener("click", saveSettings);
+    $("contactsBtn").addEventListener("click", showContactPicker);
+    $("contactNewBtn").addEventListener("click", function () { openContactEdit(null); });
+    $("contactSaveBtn").addEventListener("click", saveContactEdit);
+    $("contactDeleteBtn").addEventListener("click", deleteContactFromModal);
+    $("contactAvatarUploadBtn").addEventListener("click", function () { $("contactAvatarUpload").click(); });
+    $("contactAvatarUpload").addEventListener("change", function () {
+      var file = this.files && this.files[0];
+      if (!file) return;
+      if (!/^image\//.test(file.type)) { toast("请选择图片文件"); return; }
+      resizeImage(file, 320).then(function (dataUrl) {
+        if (!contactDraft) return;
+        contactDraft.avatar = { type: "image", value: dataUrl };
+        contactEmojiSel = "";
+        renderContactEmojiGrid();
+        renderContactAvatarPreview();
+        toast("头像已选好，保存后生效");
+      }).catch(function () { toast("图片读取失败，请重试"); });
+      this.value = "";
+    });
+    $("contactAvatarResetBtn").addEventListener("click", function () {
+      if (!contactDraft) return;
+      contactDraft.avatar = { type: "emoji", value: "🐻" };
+      contactEmojiSel = "🐻";
+      renderContactEmojiGrid();
+      renderContactAvatarPreview();
+      toast("已恢复默认头像，保存后生效");
+    });
     document.querySelectorAll("#freqPick .priority").forEach(function (b) {
       b.addEventListener("click", function () { freqSel = b.dataset.freq; renderFreqPick(); });
     });
@@ -2180,7 +2631,6 @@
 
     $("askFAB").addEventListener("click", openAskTA);
     $("stickerBtn").addEventListener("click", toggleStickerPanel);
-    $("stickerImportBtn").addEventListener("click", function () { $("stickerImportFile").click(); });
     $("stickerImportFile").addEventListener("change", function () { importStickers(this.files); this.value = ""; });
     document.addEventListener("click", function (e) {
       var panel = $("stickerPanel");
@@ -2280,45 +2730,22 @@
   function init() {
     bindEvents();
     runSplash();
-    applyTheme();
-    applyBackground();
-    applyRadius();
-    applyCustomCss();
-    applyChatCss();
-    applyFontScale();
-    updateCompanionUI();
-    updateNotifyBtn();
-    renderQuickReplies();
-    renderPlans();
-    renderAnniversaries();
-    renderFavorites();
-    renderAllMessages();
-    revealLatest();
-
-    if (!state.pomoTimer.started && !state.pomoTimer.running) state.pomoTimer.remaining = pomoDuration();
-    syncPomoInputs();
-    renderPomo();
-
-    if (!state.seen) {
-      state.seen = true;
-      var c = state.companion.name;
-      addMessage("companion", "你好呀，我是" + c + " 👋 以后我就是你的计划搭子啦。", "encourage", { silent: true });
-      addMessage("companion", "每天我都会在不定的时候，把字卡投递给你，也会自己主动来找你说话～", "encourage", { silent: true });
-      addMessage("companion", "左侧可以添加计划、置顶纪念日，还能打开周日历、番茄钟和字卡库，我们一起慢慢来。", "system", { silent: true });
-      save();
-    }
-
     var today = dateStr(new Date());
     if (state.schedule.date !== today) { generateDailySchedule(today); save(); }
-    renderFootTip();
+    refreshActiveUI();
+    updateNotifyBtn();
+    renderContactList();
+    $("contactScreen").hidden = false;
+  }
 
+  var timersStarted = false;
+  function startTimers() {
+    if (timersStarted) return;
+    timersStarted = true;
     setInterval(tick, 25000);
     tick();
     setInterval(tickPomo, 500);
     tickPomo();
-
-    var appEl = $("app");
-    if (appEl) appEl.classList.toggle("with-moments", !!state.showMoments);
     initTA();
     scheduleAutoSend();
   }

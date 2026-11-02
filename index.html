@@ -16,6 +16,21 @@
     <div class="splash-brand">🌟 STARPlanner</div>
     <div class="splash-bar"><div class="splash-fill" id="splashFill"></div></div>
   </div>
+
+  <!-- 联系人选择（每次开屏后） -->
+  <div class="contact-screen" id="contactScreen" hidden>
+    <div class="contact-sheet">
+      <header class="contact-head">
+        <div class="contact-brand">🌟 STARPlanner</div>
+        <h1 class="contact-title">今天，想和谁说说话？</h1>
+        <p class="contact-sub">每位联系人都拥有自己的「TA 的时刻」、纪念日、收藏与聊天记录。</p>
+      </header>
+      <div class="contact-list" id="contactList"></div>
+      <button class="contact-new" id="contactNewBtn" type="button">＋ 新建联系人</button>
+      <p class="contact-foot">回复设置 · 字卡库 · 周日历 · 计划 在所有联系人之间共享</p>
+    </div>
+  </div>
+
   <div class="bg-layer" id="bgLayer"></div>
   <div class="app" id="app">
 
@@ -27,6 +42,7 @@
           <span class="brand-name">STARPlanner</span>
         </div>
         <div class="sidebar-actions">
+          <button class="icon-btn" id="contactsBtn" aria-label="切换联系人" title="切换联系人">👥</button>
           <button class="icon-btn" id="notifyBtn" aria-label="桌面通知" title="桌面通知">🔔</button>
           <button class="icon-btn" id="themeBtn" aria-label="切换主题" title="切换主题">☾</button>
           <button class="icon-btn sidebar-close" id="sidebarClose" aria-label="收起侧栏" title="收起侧栏">✕</button>
@@ -111,7 +127,7 @@
         <div class="quick-replies" id="quickReplies"></div>
         <div class="sticker-panel" id="stickerPanel" hidden>
           <div class="sticker-grid" id="stickerGrid"></div>
-          <p class="empty" id="stickerEmpty">还没有表情包，去「回复设置」里导入吧。</p>
+          <p class="empty" id="stickerEmpty">还没有表情包，去「字卡库」里导入吧。</p>
         </div>
         <form class="composer-row" id="composerForm">
           <div class="composer-field">
@@ -261,6 +277,7 @@
         <h3>设置你的伙伴</h3>
         <button class="modal-close" data-close="settingsOverlay" aria-label="关闭">✕</button>
       </div>
+      <p class="hint settings-scope-hint">昵称、头像、外观与活跃时段只属于当前联系人；回复设置、字卡库、计划和周日历为所有联系人共享。</p>
       <div class="field">
         <span>背景图片（大背景）</span>
         <div class="upload-row">
@@ -384,7 +401,7 @@
           <input type="file" id="importFile" accept="application/json" hidden />
           <button class="btn ghost" id="importBtn">导入</button>
         </div>
-        <p class="hint">导出会把所选范围存成 JSON 文件；导入会覆盖对应范围的数据。</p>
+        <p class="hint">「全局」会导出所有联系人（含问过 TA 的全部问题与答案、每位「你的XX」称呼）与共享数据；导入会覆盖或合并对应数据。</p>
       </div>
 
       <div class="field">
@@ -406,6 +423,43 @@
     </div>
   </div>
 
+  <!-- 联系人编辑弹窗 -->
+  <div class="overlay" id="contactEditOverlay" hidden>
+    <div class="modal contact-edit-modal">
+      <div class="modal-head">
+        <h3 id="contactEditTitle">新建联系人</h3>
+        <button class="modal-close" data-close="contactEditOverlay" aria-label="关闭">✕</button>
+      </div>
+      <div class="contact-draft-avatar" id="contactAvatarPreview">🐻</div>
+      <label class="field">
+        <span>TA 的名字</span>
+        <input type="text" id="contactNameInput" placeholder="例如：星野" maxlength="16" />
+      </label>
+      <label class="field">
+        <span>对 TA 的称呼（显示为「你的___」）</span>
+        <input type="text" id="contactTermInput" placeholder="例如：私人计划搭子" maxlength="12" />
+      </label>
+      <div class="field">
+        <span>TA 的头像 · 选择一个表情</span>
+        <div class="emoji-grid" id="contactEmojiGrid"></div>
+      </div>
+      <div class="field">
+        <span>或上传 TA 的头像</span>
+        <div class="upload-row">
+          <input type="file" id="contactAvatarUpload" accept="image/*" hidden />
+          <button class="btn ghost" id="contactAvatarUploadBtn" type="button">选择图片</button>
+          <button class="btn ghost danger" id="contactAvatarResetBtn" type="button">恢复默认</button>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn ghost danger" id="contactDeleteBtn" hidden>删除联系人</button>
+        <span class="spacer"></span>
+        <button class="btn ghost" data-close="contactEditOverlay">取消</button>
+        <button class="btn primary" id="contactSaveBtn">保存</button>
+      </div>
+    </div>
+  </div>
+
   <!-- 回复设置弹窗 -->
   <div class="overlay" id="replySettingsOverlay" hidden>
     <div class="modal reply-modal">
@@ -415,15 +469,6 @@
       </div>
       <p class="hint" style="text-align:left;margin:-6px 0 16px">控制对方回复的节奏、条数与内容比例；下方数值均为概率（%）。</p>
       <div class="reply-fields" id="replySettingsFields"></div>
-      <div class="sticker-manage">
-        <div class="sticker-manage-head">
-          <span>表情包（对方会按概率随文字一起发送；用户可从输入框右侧选择发送）</span>
-          <button class="btn ghost" id="stickerImportBtn" type="button">导入表情包</button>
-          <input type="file" id="stickerImportFile" accept="image/*" multiple hidden />
-        </div>
-        <div class="sticker-manage-list" id="stickerManageList"></div>
-        <p class="empty" id="stickerManageEmpty">还没有表情包。</p>
-      </div>
       <div class="modal-actions">
         <button class="btn ghost" data-close="replySettingsOverlay">取消</button>
         <button class="btn primary" id="replySettingsSave">保存</button>
@@ -674,6 +719,7 @@
     </div>
   </div>
 
+  <input type="file" id="stickerImportFile" accept="image/*" multiple hidden />
   <div class="toast" id="toast" hidden></div>
 
   <script src="app.js"></script>
